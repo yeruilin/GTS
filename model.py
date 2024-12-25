@@ -6,7 +6,7 @@ import numpy as np
 from typing import Tuple, Optional
 from pytorch3d.ops.knn import knn_points
 from pytorch3d.transforms import quaternion_to_matrix
-from pytorch3d.renderer.cameras import PerspectiveCameras
+from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras
 from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics
 
 def inverse_sigmoid(x):
@@ -222,16 +222,20 @@ class Gaussians:
 
         return data
 
-    def _compute_jacobian(self, means_3D: torch.Tensor, camera: PerspectiveCameras, img_size: Tuple):
+    def _compute_jacobian(self, means_3D: torch.Tensor, camera, img_size: Tuple):
 
-        if camera.in_ndc():
-            raise RuntimeError
+        # if camera.in_ndc():
+        #     raise RuntimeError
 
-        fx, fy = camera.focal_length.flatten()
+        # fx, fy = camera.focal_length.flatten()
         W, H = img_size
 
-        half_tan_fov_x = 0.5 * W / fx
-        half_tan_fov_y = 0.5 * H / fy
+        half_tan_fov_x=torch.tan(camera.fov)/2
+        half_tan_fov_y=torch.tan(camera.fov)/2
+        fx=W/torch.tan(camera.fov)
+        fy=H/torch.tan(camera.fov)
+        # half_tan_fov_x = 0.5 * W / fx
+        # half_tan_fov_y = 0.5 * H / fy
 
         view_transform = camera.get_world_to_view_transform()
         means_view_space = view_transform.transform_points(means_3D)
@@ -325,7 +329,7 @@ class Gaussians:
 
     def compute_cov_2D(
         self, means_3D: torch.Tensor, quats: torch.Tensor, scales: torch.Tensor,
-        camera: PerspectiveCameras, img_size: Tuple
+        camera, img_size: Tuple
     ):
         """
         Computes the covariance matrices of 2D Gaussians using equation (5) of the 3D
@@ -338,7 +342,7 @@ class Gaussians:
                             components of 3D Gaussians in quaternion form.
             scales      :   If self.is_isotropic is True, scales is will be a torch.Tensor of shape (N, 1)
                             If self.is_isotropic is False, scales is will be a torch.Tensor of shape (N, 3)
-            camera      :   A pytorch3d PerspectiveCameras object
+            camera      :   A pytorch3d Camera object
             img_size    :   A tuple representing the (width, height) of the image
 
         Returns:
@@ -370,14 +374,14 @@ class Gaussians:
         return cov_2D
 
     @staticmethod
-    def compute_means_2D(means_3D: torch.Tensor, camera: PerspectiveCameras):
+    def compute_means_2D(means_3D: torch.Tensor, camera):
         """
         Computes the means of the projected 2D Gaussians given the means of the 3D Gaussians.
 
         Args:
             means_3D    :   A torch.Tensor of shape (N, 3) representing the means of
                             3D Gaussians.
-            camera      :   A pytorch3d PerspectiveCameras object.
+            camera      :   A pytorch3d Camera object.
 
         Returns:
             means_2D    :   A torch.Tensor of shape (N, 2) representing the means of
@@ -700,12 +704,12 @@ class Scene:
     def __repr__(self):
         return f"<Scene with {len(self.gaussians)} Gaussians>"
 
-    def compute_depth_values(self, camera: PerspectiveCameras):
+    def compute_depth_values(self, camera):
         """
         Computes the depth value of each 3D Gaussian.
 
         Args:
-            camera  :   A pytorch3d PerspectiveCameras object.
+            camera  :   A pytorch3d Camera object.
 
         Returns:
             z_vals  :   A torch.Tensor of shape (N,) with the depth of each 3D Gaussian.
@@ -850,7 +854,7 @@ class Scene:
         return transmittance
 
     def splat(
-        self, camera: PerspectiveCameras, means_3D: torch.tensor, z_vals: torch.Tensor,
+        self, camera, means_3D: torch.tensor, z_vals: torch.Tensor,
         quats: torch.Tensor, scales: torch.Tensor, colours: torch.Tensor,
         opacities: torch.Tensor, img_size: Tuple = (256, 256),
         start_transmittance: Optional[torch.Tensor] = None,
@@ -862,7 +866,7 @@ class Scene:
         them to the image plane to render an RGB image, depth map and a silhouette map.
 
         Args:
-            camera                  :   A pytorch3d PerspectiveCameras object.
+            camera                  :   A pytorch3d Camera object.
             means_3D                :   A torch.Tensor of shape (N, 3) with the means
                                         of the 3D Gaussians.
             z_vals                  :   A torch.Tensor of shape (N,) with the depths
@@ -948,7 +952,7 @@ class Scene:
         return image, depth, mask, final_transmittance,means_2D,radii
 
     def render(
-        self, camera: PerspectiveCameras,
+        self, camera,
         per_splat: int = -1, img_size: Tuple = (256, 256),
         bg_colour: Tuple = (0.0, 0.0, 0.0),
         no_grad=False
@@ -959,7 +963,7 @@ class Scene:
         from a given pytorch 3D camera.
 
         Args:
-            camera      :   A pytorch3d PerspectiveCameras object.
+            camera      :   A pytorch3d Cameras object.
             per_splat   :   Number of gaussians to splat in one function call. If set to -1,
                             then all gaussians in the scene are splat in a single function call.
                             If set to any other positive interger, then it determines the number of
@@ -1071,7 +1075,7 @@ class Scene:
         Args:
             means_3D        :   A torch.Tensor of shape (N, 3) with the means
                                 of the 3D Gaussians.
-            camera          :   A pytorch3d PerspectiveCameras object.
+            camera          :   A pytorch3d Camera object.
 
         Returns:
             gaussian_dirs   :   A torch.Tensor of shape (N, 3) representing the direction vector
@@ -1084,3 +1088,13 @@ class Scene:
         gaussian_dirs = means_3D-center  # (N, 3)
         gaussian_dirs=torch.nn.functional.normalize(gaussian_dirs, p=2, dim=1)
         return gaussian_dirs
+
+    def render_conf_hist(
+        self, camera,
+        per_splat: int = -1, img_size: Tuple = (128, 128),
+        bg_colour: Tuple = (0.0, 0.0, 0.0),
+        no_grad=False
+    ):
+        image, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
+
+        return 
