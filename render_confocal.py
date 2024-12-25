@@ -15,10 +15,6 @@ def create_renders(args):
     dim = args.img_dim
     img_size = (dim, dim)
 
-    debug_root = os.path.join(args.out_path, "q1_render")
-    if not os.path.exists(debug_root):
-        os.makedirs(debug_root, exist_ok=True)
-
     # Loading pre-trained gaussians
     gaussians = Gaussians(
         load_path=args.data_path, init_type="gaussians",
@@ -43,8 +39,10 @@ def create_renders(args):
     transient_map=np.zeros((args.bin,args.img_dim,args.img_dim),dtype=np.float32)
 
     with torch.no_grad():
-        for i in range(img_size[0]):
-            for j in range(img_size[1]):
+        # 渲染真实的强度图和深度图
+        for i in range(img_size[0]//2,img_size[0]//2+1):
+            for j in range(img_size[1]//2,img_size[1]//2+1):
+                print("ground truth")
                 scan_point=(-args.width/2+step*i,-args.width/2+step*j,-2.0) # 扫描点在z=2.0的位置
                 dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
                 fov=math.asin(radius/dist)
@@ -56,9 +54,9 @@ def create_renders(args):
                 ).to(args.device)
                 current_camera.image_size=(img_size,)
 
+                # 渲染某个视角下的图片
                 img, depth, mask,_,_ = scene.render(current_camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
-
-                debug_path = os.path.join(debug_root, f"{i:03d}.png")
+                debug_path = "results/gt.png"
                 img = img.detach().cpu().numpy()
                 mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
                 depth = depth.detach().cpu().numpy()
@@ -68,20 +66,34 @@ def create_renders(args):
 
                 # Colouring the depth map
                 depth = depth[:, :, 0].astype(np.float32)  # (H, W) # 有效的depth在5-7之间，因此可以在这个范围归一化配置颜色
+
                 coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
                 concat = np.concatenate([img, coloured_depth, mask], axis = 1)
                 resized = Image.fromarray(concat).resize((256*3, 256))
                 resized.save(debug_path)
 
-                exit()
+        for i in range(img_size[0]):
+            for j in range(img_size[1]):
+                print(i,j)
+                scan_point=(-args.width/2+step*i,-args.width/2+step*j,-2.0) # 扫描点在z=2.0的位置
+                dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
+                fov=math.asin(radius/dist)
+                R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
+                current_camera = FoVPerspectiveCameras(
+                    znear=0.1,zfar=10.0,
+                    fov=fov,degrees=False, # radian
+                    R=R, T=T
+                ).to(args.device)
+                current_camera.image_size=(img_size,)
 
-                # # Rendering histogram using gaussian splatting
-                # hist = scene.render_conf_hist(current_camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
-                # transient_map[:,i,j]=hist.detach().cpu().numpy()
+                # Rendering histogram using gaussian splatting
+                hist = scene.render_conf_hist(current_camera,args.bin_resolution,args.bin,
+                                              args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
+                transient_map[:,i,j]=hist.detach().cpu().numpy()
 
         # 将瞬态图保存为.mat文件
-        savemat("confocal_cow.mat",{"data":transient_map})
+        savemat("results/confocal_snow.mat",{"data":transient_map})
 
 def get_args():
 

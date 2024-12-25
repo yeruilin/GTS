@@ -1090,11 +1090,22 @@ class Scene:
         return gaussian_dirs
 
     def render_conf_hist(
-        self, camera,
+        self, camera,bin_resolution,num_bins,
         per_splat: int = -1, img_size: Tuple = (128, 128),
         bg_colour: Tuple = (0.0, 0.0, 0.0),
         no_grad=False
     ):
-        image, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
+        hist=torch.zeros(num_bins,dtype=torch.float32,device=camera.device,requires_grad=(not no_grad))
+        intensity_, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
+        if intensity_.shape[-1]==3:
+            intensity = 0.29900 * intensity_[:,:,0:1] + 0.58700 * intensity_[:,:,1:2] + 0.11400 * intensity_[:,:,2:3] # RGB2grey
+        
+        select_mask = torch.where(mask > 0.5, True, False)
 
-        return 
+        hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
+        indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
+        indices = torch.clamp(indices, 0, num_bins - 1)  # 防止索引超出范围
+        # 利用scatter_add将强度值叠加到对应bin
+        hist.scatter_add_(0, indices.flatten(), hist_inten.flatten())
+
+        return hist

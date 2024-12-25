@@ -16,13 +16,17 @@
 
 # 1. 3D Gaussian Splatting
 
-In the first part of this assignment, we will explore 3D Gaussian Splatting by building a simplified version of the 3D Gaussian rasterization pipeline introduced by the [original paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf). Once we create the rasterizer, we will first use it to render pre-trained 3D Gaussians provided by the authors of the original paper. Then, we will create training code which leverages the renderer to optimize 3D Gaussians to represent custom scenes.
+我们要渲染瞬态图，核心是把渲染场景框定在一个球当中，这样每个扫描点都可以定义一个FoVCamera，并渲染强度图和深度图，由这两个图可以用torch的scatter_add函数生成histogram。渲染一副64x64的瞬态图差不读需要1小时，因为相当于渲染了4096张图片。不过这可以通过提高per_splat和cuda编程提高速度。渲染的结果保存在results/confocal_snow.mat中。真值就是在扫描中心渲染的图片，是gt.png，64x64大小。
 
-Notes:
+<p align="center">
+  <img src="results/gt.png" alt="gt" width=60%/>
+</p>
 
-- Please run all code from the `Q1` folder for this section.
-- Search for `"### YOUR CODE HERE ###"` for areas where code should be written.
-- Please remember to follow the deliverables specified in the **Submission** section in each question.
+但是我们用LCT求解瞬态图，效果还是比较糟糕的。基本上看不出深度图那种效果了。
+
+<p align="center">
+  <img src="results/snow_data_LCT.png" alt="snow_data_LCT" width=60%/>
+</p>
 
 ## 1.1 3D Gaussian Rasterization (35 points)
 

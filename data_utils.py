@@ -11,7 +11,7 @@ from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transfor
 
 SH_C0 = 0.28209479177387814
 CMAP_JET = plt.get_cmap("jet")
-CMAP_MIN_NORM, CMAP_MAX_NORM = 5.0, 7.0
+CMAP_MIN_NORM, CMAP_MAX_NORM = 0.5, 4.0
 
 class CowDataset(Dataset):
 
