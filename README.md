@@ -16,17 +16,35 @@
 
 # 1. 3D Gaussian Splatting
 
-我们要渲染瞬态图，核心是把渲染场景框定在一个球当中，这样每个扫描点都可以定义一个FoVCamera，并渲染强度图和深度图，由这两个图可以用torch的scatter_add函数生成histogram。渲染一副64x64的瞬态图差不读需要1小时，因为相当于渲染了4096张图片。不过这可以通过提高per_splat和cuda编程提高速度。渲染的结果保存在results/confocal_snow.mat中。真值就是在扫描中心渲染的图片，是gt.png，64x64大小。
+我们要渲染瞬态图，核心是把渲染场景框定在一个球当中，这样每个扫描点都可以定义一个FoVCamera，并渲染强度图和深度图，由这两个图可以用torch的scatter_add函数生成histogram。
+
+渲染瞬态图的时间取决于场景的高斯片元数目。比如sledge.ply有10万多的片元，因此一副64x64的瞬态图差不读需要1小时。而final_cow.ply有几万个片元，可以一次性放入显存，使得渲染64x64几乎只需要2-3分钟。
+
+final_cow.ply渲染的结果保存在results/confocal_cow.mat中。真值就是在扫描中心渲染的图片，是gt_cow.png，64x64大小。运行代码 `python render_confocal.py`默认是渲染这个场景。bin宽和width设置都根据半径1.02左右确定的。per_splatting=-1，一次性全部放入显存。
 
 <p align="center">
-  <img src="results/gt.png" alt="gt" width=60%/>
+  <img src="results/gt_cow.png" alt="gt_cow" width=60%/>
 </p>
 
-但是我们用LCT求解瞬态图，效果还是比较糟糕的。基本上看不出深度图那种效果了。
+我们用LCT求解瞬态图，可以得到不错的深度方向重建结果。但显然，奶牛的下半身重建的并不是很好，侧视图和俯视图也比较糟糕，甚至都没连续。
+
+<p align="center">
+  <img src="results/cow_data_LCT.png" alt="cow_data_LCT" width=60%/>
+</p>
+
+sledge.ply渲染的结果保存在results/confocal_snow.mat中。真值就是在扫描中心渲染的图片，是gt_snow.png，64x64大小。运行代码 `python render_confocal.py --data_path "./data/sledge.ply" --width 2.5 --bin_resolution 0.02 --img_dim 64 --gaussians_per_splat 2048` 。bin宽和width设置都根据半径1.3左右确定的。per_splatting因为片元太多，无法一次放入显存，只好每次放入2048个。
+
+<p align="center">
+  <img src="results/gt_snow.png" alt="gt" width=60%/>
+</p>
+
+我们用LCT求解瞬态图，可以得到不错的深度方向重建结果。当然这里重建结果是反过来的。其他问题也一样，侧视图和俯视图很糟糕。
 
 <p align="center">
   <img src="results/snow_data_LCT.png" alt="snow_data_LCT" width=60%/>
 </p>
+
+因此我们渲染的瞬态图是没问题的。
 
 ## 1.1 3D Gaussian Rasterization (35 points)
 

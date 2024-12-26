@@ -150,10 +150,10 @@ class Gaussians:
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
         data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
 
-        if data["pre_act_scales"].shape[1] != 3:
-            raise NotImplementedError("Currently does not support isotropic")
-
         is_isotropic = False
+        if data["pre_act_scales"].shape[1] != 3:
+            is_isotropic=True
+            # raise NotImplementedError("Currently does not support isotropic")
 
         return data, is_isotropic
 

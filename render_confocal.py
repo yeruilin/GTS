@@ -36,16 +36,16 @@ def create_renders(args):
     step=args.width/(args.img_dim-1) # 横向和纵向的扫描范围
     object_center=(0,0,0) # 场景中心
 
-    transient_map=np.zeros((args.bin,args.img_dim,args.img_dim),dtype=np.float32)
+    transient_map=np.zeros((args.img_dim,args.img_dim,args.bin),dtype=np.float32)
 
     with torch.no_grad():
         # 渲染真实的强度图和深度图
         for i in range(img_size[0]//2,img_size[0]//2+1):
             for j in range(img_size[1]//2,img_size[1]//2+1):
                 print("ground truth")
-                scan_point=(-args.width/2+step*i,-args.width/2+step*j,-2.0) # 扫描点在z=2.0的位置
+                scan_point=(args.width/2-step*i,args.width/2-step*j,-2.0) # 扫描点在z=2.0的位置
                 dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-                fov=math.asin(radius/dist)
+                fov=2*math.asin(radius/dist)
                 R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
                 current_camera = FoVPerspectiveCameras(
                     znear=0.1,zfar=10.0,
@@ -76,9 +76,9 @@ def create_renders(args):
         for i in range(img_size[0]):
             for j in range(img_size[1]):
                 print(i,j)
-                scan_point=(-args.width/2+step*i,-args.width/2+step*j,-2.0) # 扫描点在z=2.0的位置
+                scan_point=(args.width/2-step*i,args.width/2-step*j,-2.0) # 扫描点在z=2.0的位置
                 dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-                fov=math.asin(radius/dist)
+                fov=2*math.asin(radius/dist)
                 R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
                 current_camera = FoVPerspectiveCameras(
                     znear=0.1,zfar=10.0,
@@ -90,10 +90,10 @@ def create_renders(args):
                 # Rendering histogram using gaussian splatting
                 hist = scene.render_conf_hist(current_camera,args.bin_resolution,args.bin,
                                               args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
-                transient_map[:,i,j]=hist.detach().cpu().numpy()
+                transient_map[i,j,:]=hist.detach().cpu().numpy()
 
         # 将瞬态图保存为.mat文件
-        savemat("results/confocal_snow.mat",{"data":transient_map})
+        savemat("results/gaussian_cow.mat",{"data":transient_map,"bin_resolution":args.bin_resolution/3e8,"width":args.width})
 
 def get_args():
 
@@ -103,7 +103,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="./data/sledge.ply", type=str,
+        "--data_path", default="./data/final_cow.ply", type=str,
         help="Path to the pre-trained gaussian data to be rendered."
     )
     parser.add_argument(
@@ -120,19 +120,19 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--bin_resolution", default=0.02, type=int,
+        "--bin_resolution", default=0.01, type=float,
         help=(
             "Bin resolution. "
         )
     )
     parser.add_argument(
-        "--width", default=2.5, type=int,
+        "--width", default=2.5, type=float,
         help=(
             "Scanning width"
         )
     )
     parser.add_argument(
-        "--gaussians_per_splat", default=2048, type=int,
+        "--gaussians_per_splat", default=-1, type=int,
         help=(
             "Number of gaussians to splat in one function call. If set to -1, "
             "then all gaussians in the scene are splat in a single function call. "
