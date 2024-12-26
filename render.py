@@ -6,7 +6,7 @@ import numpy as np
 
 from PIL import Image
 from tqdm import tqdm
-from model import Gaussians, Scene
+from model_old import Gaussians, Scene
 from data_utils import colour_depth_q1_render
 from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform
 

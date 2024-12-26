@@ -6,7 +6,7 @@ import numpy as np
 from typing import Tuple, Optional
 from pytorch3d.ops.knn import knn_points
 from pytorch3d.transforms import quaternion_to_matrix
-from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras
+from pytorch3d.renderer.cameras import PerspectiveCameras
 from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics
 
 def inverse_sigmoid(x):
@@ -51,12 +51,10 @@ class Gaussians:
 
     def __init__(
         self, init_type: str, device: str, load_path: Optional[str] = None,
-        num_points: Optional[int] = None, isotropic: Optional[bool] = None,
-        colour_dim=3
+        num_points: Optional[int] = None, isotropic: Optional[bool] = None
     ):
 
         self.device = device
-        self.colour_dim=colour_dim
 
         # 激活函数
         self.scaling_activation = torch.exp
@@ -153,9 +151,10 @@ class Gaussians:
         data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
 
         is_isotropic = False
+
         if data["pre_act_scales"].shape[1] != 3:
-            is_isotropic=True
             # raise NotImplementedError("Currently does not support isotropic")
+            is_isotropic=True        
 
         return data, is_isotropic
 
@@ -172,7 +171,7 @@ class Gaussians:
         data["pre_act_opacities"] = 8.0 * torch.ones((len(means),), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
-        data["colours"] = torch.rand((len(means), self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
+        data["colours"] = torch.rand((len(means), 3), dtype=torch.float32)  # (N, 3)
 
         # Initializing quaternions to be the identity quaternion
         quats = torch.zeros((len(means), 4), dtype=torch.float32)  # (N, 4)
@@ -182,6 +181,11 @@ class Gaussians:
         # Initializing scales using the mean distance of each point to its 50 nearest points
         dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
         data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
+
+        # 计算场景大致范围
+        _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
+        self.extent=1.0*torch.max(_range).to(self.device)
+        print("extent:",self.extent)
 
         if not self.is_isotropic:
             data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
@@ -204,7 +208,7 @@ class Gaussians:
         data["pre_act_opacities"] = 8.0 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
-        data["colours"] = torch.rand((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
+        data["colours"] = torch.rand((num_points, 3), dtype=torch.float32)  # (N, 3)
 
         # Initializing quaternions to be the identity quaternion
         quats = torch.zeros((num_points, 4), dtype=torch.float32)  # (N, 4)
@@ -219,20 +223,16 @@ class Gaussians:
 
         return data
 
-    def _compute_jacobian(self, means_3D: torch.Tensor, camera, img_size: Tuple):
+    def _compute_jacobian(self, means_3D: torch.Tensor, camera: PerspectiveCameras, img_size: Tuple):
 
-        # if camera.in_ndc():
-        #     raise RuntimeError
+        if camera.in_ndc():
+            raise RuntimeError
 
-        # fx, fy = camera.focal_length.flatten()
+        fx, fy = camera.focal_length.flatten()
         W, H = img_size
 
-        half_tan_fov_x=torch.tan(camera.fov)/2
-        half_tan_fov_y=torch.tan(camera.fov)/2
-        fx=W/torch.tan(camera.fov)
-        fy=H/torch.tan(camera.fov)
-        # half_tan_fov_x = 0.5 * W / fx
-        # half_tan_fov_y = 0.5 * H / fy
+        half_tan_fov_x = 0.5 * W / fx
+        half_tan_fov_y = 0.5 * H / fy
 
         view_transform = camera.get_world_to_view_transform()
         means_view_space = view_transform.transform_points(means_3D)
@@ -326,7 +326,7 @@ class Gaussians:
 
     def compute_cov_2D(
         self, means_3D: torch.Tensor, quats: torch.Tensor, scales: torch.Tensor,
-        camera, img_size: Tuple
+        camera: PerspectiveCameras, img_size: Tuple
     ):
         """
         Computes the covariance matrices of 2D Gaussians using equation (5) of the 3D
@@ -339,7 +339,7 @@ class Gaussians:
                             components of 3D Gaussians in quaternion form.
             scales      :   If self.is_isotropic is True, scales is will be a torch.Tensor of shape (N, 1)
                             If self.is_isotropic is False, scales is will be a torch.Tensor of shape (N, 3)
-            camera      :   A pytorch3d Camera object
+            camera      :   A pytorch3d PerspectiveCameras object
             img_size    :   A tuple representing the (width, height) of the image
 
         Returns:
@@ -371,14 +371,14 @@ class Gaussians:
         return cov_2D
 
     @staticmethod
-    def compute_means_2D(means_3D: torch.Tensor, camera):
+    def compute_means_2D(means_3D: torch.Tensor, camera: PerspectiveCameras):
         """
         Computes the means of the projected 2D Gaussians given the means of the 3D Gaussians.
 
         Args:
             means_3D    :   A torch.Tensor of shape (N, 3) representing the means of
                             3D Gaussians.
-            camera      :   A pytorch3d Camera object.
+            camera      :   A pytorch3d PerspectiveCameras object.
 
         Returns:
             means_2D    :   A torch.Tensor of shape (N, 2) representing the means of
@@ -488,13 +488,24 @@ class Gaussians:
             #     self.optimizer = SparseGaussianAdam(l, lr=0.0, eps=1e-15)
             self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
 
+        # self.exposure_optimizer = torch.optim.Adam([self._exposure])
+
         self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
+        
+        # self.exposure_scheduler_args = get_expon_lr_func(training_args.exposure_lr_init, training_args.exposure_lr_final,
+        #                                                 lr_delay_steps=training_args.exposure_lr_delay_steps,
+        #                                                 lr_delay_mult=training_args.exposure_lr_delay_mult,
+        #                                                 max_steps=training_args.iterations)
 
     def update_learning_rate(self, iteration):
         ''' Learning rate scheduling per step '''
+        # if self.pretrained_exposures is None:
+        #     for param_group in self.exposure_optimizer.param_groups:
+        #         param_group['lr'] = self.exposure_scheduler_args(iteration)
+
         for param_group in self.optimizer.param_groups:
             if param_group["name"] == "xyz":
                 lr = self.xyz_scheduler_args(iteration)
@@ -526,6 +537,8 @@ class Gaussians:
 
         self.means = optimizable_tensors["xyz"]
         self.colours = optimizable_tensors["colours"]
+        # self._features_dc = optimizable_tensors["f_dc"] # 这个训练的是球谐分量
+        # self._features_rest = optimizable_tensors["f_rest"]
         self.pre_act_opacities = optimizable_tensors["opacity"]
         self.pre_act_scales = optimizable_tensors["scaling"]
         self.pre_act_quats = optimizable_tensors["rotation"]
@@ -567,6 +580,7 @@ class Gaussians:
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
         self.means = optimizable_tensors["xyz"]
         self.colours = optimizable_tensors["colours"]
+        # self._features_rest = optimizable_tensors["f_rest"]
         self.pre_act_opacities = optimizable_tensors["opacity"]
         self.pre_act_scales = optimizable_tensors["scaling"]
         self.pre_act_quats = optimizable_tensors["rotation"]
@@ -682,16 +696,17 @@ class Scene:
     def __init__(self, gaussians: Gaussians):
         self.gaussians = gaussians
         self.device = self.gaussians.device
+        self.cameras_extent=gaussians.extent
 
     def __repr__(self):
         return f"<Scene with {len(self.gaussians)} Gaussians>"
 
-    def compute_depth_values(self, camera):
+    def compute_depth_values(self, camera: PerspectiveCameras):
         """
         Computes the depth value of each 3D Gaussian.
 
         Args:
-            camera  :   A pytorch3d Camera object.
+            camera  :   A pytorch3d PerspectiveCameras object.
 
         Returns:
             z_vals  :   A torch.Tensor of shape (N,) with the depth of each 3D Gaussian.
@@ -836,7 +851,7 @@ class Scene:
         return transmittance
 
     def splat(
-        self, camera, means_3D: torch.tensor, z_vals: torch.Tensor,
+        self, camera: PerspectiveCameras, means_3D: torch.tensor, z_vals: torch.Tensor,
         quats: torch.Tensor, scales: torch.Tensor, colours: torch.Tensor,
         opacities: torch.Tensor, img_size: Tuple = (256, 256),
         start_transmittance: Optional[torch.Tensor] = None,
@@ -848,7 +863,7 @@ class Scene:
         them to the image plane to render an RGB image, depth map and a silhouette map.
 
         Args:
-            camera                  :   A pytorch3d Camera object.
+            camera                  :   A pytorch3d PerspectiveCameras object.
             means_3D                :   A torch.Tensor of shape (N, 3) with the means
                                         of the 3D Gaussians.
             z_vals                  :   A torch.Tensor of shape (N,) with the depths
@@ -858,7 +873,7 @@ class Scene:
             scales                  :   A torch.Tensor of shape (N, 1) (if isotropic) or
                                         (N, 3) (if anisotropic) representing the scaling
                                         components of 3D Gaussians.
-            colours                 :   A torch.Tensor of shape (N, colour_dim) with the colour contribution
+            colours                 :   A torch.Tensor of shape (N, 3) with the colour contribution
                                         of each Gaussian.
             opacities               :   A torch.Tensor of shape (N,) with the opacity of each Gaussian.
             img_size                :   The (width, height) of the image.
@@ -913,14 +928,14 @@ class Scene:
         # in a diferent way.
         z_vals = z_vals[:, None, None, None]  # (N, 1, 1, 1)
         alphas = alphas[..., None]  # (N, H, W, 1)
-        colours = colours[:, None, None, :]  # (N, 1, 1, colour_dim)
+        colours = colours[:, None, None, :]  # (N, 1, 1, 3)
         transmittance = transmittance[..., None]  # (N, H, W, 1)
 
         # Step 4: Create image, depth and mask by computing the colours for each pixel.
 
         ### YOUR CODE HERE ###
         # HINT: Refer to README for a relevant equation
-        image = torch.sum(colours*alphas*transmittance,dim=0)  # (H, W, colour_dim)
+        image = torch.sum(colours*alphas*transmittance,dim=0)  # (H, W, 3)
 
         ### YOUR CODE HERE ###
         # HINT: Can you implement an equation inspired by the equation for colour?
@@ -934,7 +949,7 @@ class Scene:
         return image, depth, mask, final_transmittance,means_2D,radii
 
     def render(
-        self, camera,
+        self, camera: PerspectiveCameras,
         per_splat: int = -1, img_size: Tuple = (256, 256),
         bg_colour: Tuple = (0.0, 0.0, 0.0),
         no_grad=False
@@ -945,7 +960,7 @@ class Scene:
         from a given pytorch 3D camera.
 
         Args:
-            camera      :   A pytorch3d Cameras object.
+            camera      :   A pytorch3d PerspectiveCameras object.
             per_splat   :   Number of gaussians to splat in one function call. If set to -1,
                             then all gaussians in the scene are splat in a single function call.
                             If set to any other positive interger, then it determines the number of
@@ -961,8 +976,6 @@ class Scene:
             depth       :   A torch.Tensor of shape (H, W, 1) with the rendered depth map.
             mask        :   A torch.Tensor of shape (H, W, 1) with the rendered silhouette map.
         """
-        if self.gaussians.colour_dim==1:
-            bg_colour=bg_colour[0:1]
         bg_colour_ = torch.tensor(bg_colour)[None, None, :]  # (1, 1, 3)
         bg_colour_ = bg_colour_.to(self.device)
 
@@ -1017,7 +1030,7 @@ class Scene:
             W, H = img_size
             D = means_3D.device
             start_transmittance = torch.ones((1, H, W), dtype=torch.float32).to(D)
-            image = torch.zeros((H, W, self.gaussians.colour_dim), dtype=torch.float32).to(D)
+            image = torch.zeros((H, W, 3), dtype=torch.float32).to(D)
             depth = torch.zeros((H, W, 1), dtype=torch.float32).to(D)
             mask = torch.zeros((H, W, 1), dtype=torch.float32).to(D)
             radii=torch.zeros((len(means_3D), 1), dtype=torch.float32).to(D)
@@ -1059,7 +1072,7 @@ class Scene:
         Args:
             means_3D        :   A torch.Tensor of shape (N, 3) with the means
                                 of the 3D Gaussians.
-            camera          :   A pytorch3d Camera object.
+            camera          :   A pytorch3d PerspectiveCameras object.
 
         Returns:
             gaussian_dirs   :   A torch.Tensor of shape (N, 3) representing the direction vector
@@ -1072,26 +1085,3 @@ class Scene:
         gaussian_dirs = means_3D-center  # (N, 3)
         gaussian_dirs=torch.nn.functional.normalize(gaussian_dirs, p=2, dim=1)
         return gaussian_dirs
-
-    def render_conf_hist(
-        self, camera,bin_resolution,num_bins,
-        per_splat: int = -1, img_size: Tuple = (128, 128),
-        bg_colour: Tuple = (0.0, 0.0, 0.0),
-        no_grad=False
-    ):
-        intensity, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
-        if intensity.shape[-1]==3:
-            intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
-        
-        select_mask = torch.where(mask > 0.5, True, False)
-
-        hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
-        indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
-        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
-
-        # 没法传递梯度
-        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
-        # 利用scatter_add将强度值叠加到对应bin
-        hist.scatter_add_(0, indices, hist_inten.flatten())
-
-        return hist,means_2D,radii

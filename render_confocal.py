@@ -88,7 +88,7 @@ def create_renders(args):
                 current_camera.image_size=(img_size,)
 
                 # Rendering histogram using gaussian splatting
-                hist = scene.render_conf_hist(current_camera,args.bin_resolution,args.bin,
+                hist,_,_ = scene.render_conf_hist(current_camera,args.bin_resolution,args.bin,
                                               args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
                 transient_map[i,j,:]=hist.detach().cpu().numpy()
 

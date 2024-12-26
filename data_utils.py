@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from PIL import Image
-from plyfile import PlyData
+from plyfile import PlyData,PlyElement
 from torch.utils.data import Dataset
 from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform
 
@@ -134,6 +134,47 @@ def visualize_renders(scene, gt_viz_img, cameras, img_size):
     pred_viz_img = np.concatenate(imgs, axis=1)
     viz_frame = np.concatenate((pred_viz_img, gt_viz_img), axis=0)
     return viz_frame
+
+def construct_list_of_attributes(colours,scaling,rotation,features_rest):
+        l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
+        # All channels except the 3 DC
+        for i in range(colours.shape[1]):
+            l.append('f_dc_{}'.format(i))
+        for i in range(features_rest.shape[1]):
+            l.append('f_rest_{}'.format(i))
+        l.append('opacity')
+        for i in range(scaling.shape[1]):
+            l.append('scale_{}'.format(i))
+        for i in range(rotation.shape[1]):
+            l.append('rot_{}'.format(i))
+        return l
+
+def save_ply(path,xyz_,colours_,opacity_,scaling_,rotation_,colour_dim=3):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except OSError as error:
+        print("Already has the directory!")
+    
+    max_sh_degree=3 # 球谐分量的部分
+    f_rest_dim=3 * (max_sh_degree + 1) ** 2 - 3
+
+    xyz = xyz_.detach().cpu().numpy() # [N,3]
+    normals = np.zeros_like(xyz) # [N,3]
+    if colour_dim==3:
+        f_dc = colours_.detach().contiguous().cpu().numpy() # [N,3]
+    else:
+        f_dc = colours_.detach().contiguous().repeat(1,3).cpu().numpy()
+    f_rest = np.zeros((f_dc.shape[0],f_rest_dim)) # 球谐分量, [N,f_rest_dim]
+    opacities = opacity_.detach().cpu().unsqueeze(1).numpy() # [N,1]
+    scale = scaling_.detach().cpu().numpy() # [N,1]
+    rotation = rotation_.detach().cpu().numpy() # [N,4]
+    dtype_full = [(attribute, 'f4') for attribute in construct_list_of_attributes(f_dc,scale,rotation,f_rest)]
+
+    elements = np.empty(xyz.shape[0], dtype=dtype_full)
+    attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+    elements[:] = list(map(tuple, attributes))
+    el = PlyElement.describe(elements, 'vertex')
+    PlyData([el]).write(path)
 
 def load_gaussians_from_ply(path):
     # Modified from https://github.com/thomasantony/splat
