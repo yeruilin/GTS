@@ -14,16 +14,20 @@
 
 ---
 
-# 1. 3D Gaussian Splatting
+# 1. 共焦瞬态图渲染
 
 我们要渲染瞬态图，核心是把渲染场景框定在一个球当中，这样每个扫描点都可以定义一个FoVCamera，并渲染强度图和深度图，由这两个图可以用torch的scatter_add函数生成histogram。
+
+<p align="center">
+  <img src="results/共焦渲染.png" alt="confocal" width=60%/>
+</p>
 
 渲染瞬态图的时间取决于场景的高斯片元数目。比如sledge.ply有10万多的片元，因此一副64x64的瞬态图差不读需要1小时。而final_cow.ply有几万个片元，可以一次性放入显存，使得渲染64x64几乎只需要2-3分钟。
 
 final_cow.ply渲染的结果保存在results/confocal_cow.mat中。真值就是在扫描中心渲染的图片，是gt_cow.png，64x64大小。运行代码 `python render_confocal.py`默认是渲染这个场景。bin宽和width设置都根据半径1.02左右确定的。per_splatting=-1，一次性全部放入显存。
 
 <p align="center">
-  <img src="results/gt_cow.png" alt="gt_cow" width=60%/>
+  <img src="results/gt_cow.png" alt="gt_cow" width=50%/>
 </p>
 
 我们用LCT求解瞬态图，可以得到不错的深度方向重建结果。但显然，奶牛的下半身重建的并不是很好，侧视图和俯视图也比较糟糕，甚至都没连续。
@@ -46,19 +50,15 @@ sledge.ply渲染的结果保存在results/confocal_snow.mat中。真值就是在
 
 因此我们渲染的瞬态图是没问题的。
 
-## 1.1 3D Gaussian Rasterization (35 points)
+# 2. 非共焦瞬态图渲染
 
-In this section, we will implement a 3D Gaussian rasterization pipeline in PyTorch. The official implementation uses custom CUDA code and several optimizations to make the rendering very fast. For simplicity, our implementation avoids many of the tricks and optimizations used by the official implementation and hence would be much slower. Additionally, instead of using all the spherical harmonic coefficients to model view dependent effects, we will only use the view independent components.
+对于非共焦数据，要利用好非共焦两条边的几何关系。激光器对准p’点，面阵探测器在p位置接收回波。同样，我们以p为相机中心，渲染场景的深度图。既然有了深度，用unproject函数算出每个像素的xy坐标，结合深度就得到了v在相机坐标系的三维坐标，即知道了$\vec{pv}$。而$\vec{p_0v}=\vec{p_0p}+\vec{pv}$，其中p0和p是已知的，这样就算出了$\vec{p_0v}$。两段深度已知后，即可渲染非共焦瞬态图。
 
-Inspite of these limitations, once you complete this section successfully, you will find that our simplified 3D Gaussian rasterizer can still produce renderings of pre-trained 3D Gaussians that were trained using the original codebase reaonsably well!
+<p align="center">
+  <img src="results/非共焦渲染.png" alt="non-confocal" width=30%/>
+</p>
 
-For this section, you will have to complete the code in the files `model.py` and `render.py`. The file `model.py` contains code that manipulates and renders Gaussians. The file `render.py` uses functionality from `model.py` to render a pre-trained 3D Gaussian representation of an object.
-
-In sections `1.1.1` to `1.1.4`, you will have to complete the code in the classes `Gaussians` and `Scene` in the file `model.py`. In section `1.1.5`, you will have to complete the code in the file `render.py`. It might be helpful to first skim both the files before starting the assignment to get a rough idea of the workflow.
-
-> **Note**: All the functions in `model.py` perform operations on a batch of N Gaussians instead of 1 Gaussian at a time. As such, it is recommended to write loopless vectorized code to maximize performance. However, a solution with loops will also be accepted as long as it works and produces the desired output.
-
-### 1.1.1 Project 3D Gaussians to Obtain 2D Gaussians
+# 3.重建算法
 
 We will begin our implementation of a 3D Gaussian rasterizer by first creating functionality to project 3D Gaussians in the world space to 2D Gaussians that lie on the image plane of a camera.
 

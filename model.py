@@ -52,7 +52,7 @@ class Gaussians:
     def __init__(
         self, init_type: str, device: str, load_path: Optional[str] = None,
         num_points: Optional[int] = None, isotropic: Optional[bool] = None,
-        colour_dim=3
+        colour_dim=3,extent=1.0
     ):
 
         self.device = device
@@ -103,7 +103,7 @@ class Gaussians:
             else:
                 self.is_isotropic = isotropic
 
-            data = self._load_random(num_points)
+            data = self._load_random(num_points,extent)
 
         else:
             raise ValueError(f"Invalid init_type: {init_type}")
@@ -123,8 +123,6 @@ class Gaussians:
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 1.0 # 和空间大小有关的参数
-
-        self.extent=0.0 # 随机初始空间大小
 
         self.sphere=False # 是否使用球谐函数
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
@@ -188,16 +186,13 @@ class Gaussians:
 
         return data
 
-    def _load_random(self, num_points: int):
+    def _load_random(self, num_points: int,extent=1.0):
 
         data = dict()
 
         # Initializing means randomly
-        data["means"] = torch.randn((num_points, 3)).to(torch.float32) * 0.2  # (N, 3)
-        # 计算场景大致范围
-        _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
-        self.extent=1.0*torch.max(_range).to(self.device)
-        print("extent:",self.extent)
+        means_=torch.rand((num_points, 3), dtype=torch.float32) # (N, 3)
+        data["means"] = extent*(means_-0.5)*2
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
@@ -1093,5 +1088,6 @@ class Scene:
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
         # 利用scatter_add将强度值叠加到对应bin
         hist.scatter_add_(0, indices, hist_inten.flatten())
+        hist=torch.clamp(hist,0)
 
         return hist,means_2D,radii

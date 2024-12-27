@@ -6,6 +6,7 @@ import imageio
 import argparse
 import numpy as np
 import math
+import time
 
 from PIL import Image
 from tqdm import tqdm
@@ -21,7 +22,7 @@ from SSIM import ssim
 
 class OptimizationParams:
     def __init__(self):
-        self.iterations = 1100
+        self.iterations = 30000
         self.position_lr_init = 0.00016
         self.position_lr_final = 0.0000016
         self.position_lr_delay_mult = 0.01
@@ -36,15 +37,29 @@ class OptimizationParams:
         self.exposure_lr_delay_mult = 0.0
         self.percent_dense = 0.01
         self.lambda_dssim = 0.2
-        self.densification_interval = 100 # 重置透明度之后，间隔100次重新增删片元密度
-        self.opacity_reset_interval = 400 # 重置透明度的间隔
-        self.densify_from_iter = 400 # 超过这个阈值会重置一次透明度
+        self.densification_interval = 1000 # 重置透明度之后，间隔100次重新增删片元密度
+        self.opacity_reset_interval = 500 # 重置透明度的间隔
+        self.densify_from_iter = 5000 # 超过这个阈值会重置一次透明度
         self.densify_until_iter = 15_000 # 前15000次都需要增加高斯密度
         self.densify_grad_threshold = 0.0002
         self.depth_l1_weight_init = 1.0
         self.depth_l1_weight_final = 0.01
         self.random_background = False
         self.optimizer_type = "default"
+
+# a是预测数值，b是真实数值，首先要变成分布
+def CELoss(a,b):
+    a_prob = a / a.sum()   
+    b_prob = b / b.sum()              # 将 b 归一化为概率分布
+    # 步骤 2: 计算交叉熵
+    cross_entropy = -torch.mean(b_prob * torch.log(a_prob+1e-8))
+    return cross_entropy
+
+# 归一化L1损失
+def NormalizeL1Loss(a,b):
+    a_prob = a / a.sum()   
+    b_prob = b / b.sum()              # 将 b 归一化为概率分布
+    return torch.mean((a_prob-b_prob).abs())
 
 def make_trainable(gaussians):
 
@@ -83,6 +98,9 @@ def run_training(args):
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
+    print("radius:",radius)
+    print("object center:",object_center)
+
     train_loader = DataLoader(
         dataset, batch_size=1, shuffle=True
     )
@@ -91,7 +109,8 @@ def run_training(args):
     # Init gaussians and scene
     gaussians = Gaussians(
         num_points=10000, init_type="random",
-        device=args.device, isotropic=True,colour_dim=1
+        device=args.device, isotropic=True,
+        colour_dim=1,extent=radius
     )
 
     scene = Scene(gaussians)
@@ -102,6 +121,8 @@ def run_training(args):
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
+
+    start=time.time()
 
     # Training loop
     viz_frames = []
@@ -136,9 +157,13 @@ def run_training(args):
 
         # Compute loss
         ### YOUR CODE HERE ###
-        loss = torch.mean((hist-gt_hist).abs()) # L1 Loss
+        # loss = NormalizeL1Loss(hist,gt_hist) # L1 Loss
+        loss=CELoss(hist,gt_hist)
 
         loss.backward()
+
+        if itr%1000==0:
+            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
         ## 自适应更新density
         with torch.no_grad(): 
@@ -171,9 +196,10 @@ def run_training(args):
 
         print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
 
-    print("[*] Training Completed.")
+    end=time.time()
+    print("Training Completed. Training time:", end-start)
     # Saving Gaussian primitives (.ply)
-    save_ply("result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
     print("Save ply!")
 
 def get_args():
@@ -184,7 +210,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="./results/gaussian_cow.mat", type=str,
+        "--data_path", default="gaussian_cow.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

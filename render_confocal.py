@@ -93,7 +93,7 @@ def create_renders(args):
                 transient_map[i,j,:]=hist.detach().cpu().numpy()
 
         # 将瞬态图保存为.mat文件
-        savemat("results/gaussian_cow.mat",{"data":transient_map,"bin_resolution":args.bin_resolution/3e8,"width":args.width})
+        savemat("temp/gaussian_cow.mat",{"data":transient_map,"bin_resolution":args.bin_resolution/3e8,"width":args.width})
 
 def get_args():
 
