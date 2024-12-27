@@ -231,6 +231,29 @@ def load_gaussians_from_ply(path):
     }
     return output
 
+def unproject_depth_image(depth, camera):
+    """
+    Unprojects a depth image into a 3D point cloud.
+
+    Args:
+        depth (torch.Tensor): The depth map of the image (S, S).
+        camera: The Pytorch3D camera to render the image.
+    
+    Returns:
+        points (torch.Tensor): The 3D points of the unprojected image (N, 3).
+        rgba (torch.Tensor): The rgba color values corresponding to the unprojected
+            points (N, 4).
+    """
+    device = camera.device
+    ndc_pixel_coordinates = torch.linspace(1, -1, depth.shape[0])
+    Y, X = torch.meshgrid(ndc_pixel_coordinates, ndc_pixel_coordinates)
+    xy_depth = torch.dstack([X, Y, depth])
+    points = camera.unproject_points(
+        xy_depth.to(device), in_ndc=False, from_ndc=False, world_coordinates=True,
+    )
+
+    return points
+
 def colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs):
     """
     [Q 1.3.1] Computes view-dependent colour given spherical harmonic coefficients

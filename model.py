@@ -7,7 +7,7 @@ from typing import Tuple, Optional
 from pytorch3d.ops.knn import knn_points
 from pytorch3d.transforms import quaternion_to_matrix
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras
-from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics
+from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics,unproject_depth_image
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
@@ -1083,6 +1083,42 @@ class Scene:
         hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
         indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        # 没法传递梯度
+        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
+        # 利用scatter_add将强度值叠加到对应bin
+        hist.scatter_add_(0, indices, hist_inten.flatten())
+        hist=torch.clamp(hist,0)
+
+        return hist,means_2D,radii
+
+    def render_nonconf_hist(
+        self, camera,
+        laser_point: torch.Tensor, # [1,3]
+        bin_resolution,num_bins,
+        per_splat: int = -1, img_size: Tuple = (128, 128),
+        bg_colour: Tuple = (0.0, 0.0, 0.0),
+        no_grad=False
+    ):
+        intensity, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
+        if intensity.shape[-1]==3:
+            intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
+        
+        select_mask = torch.where(mask > 0.5, True, False)
+        d2=depth[select_mask]
+
+        # unproject depth map to 3D points
+        points=unproject_depth_image(depth,camera) #[H,W,3]
+        d1=points[select_mask]-laser_point # [M,3]
+        d1=torch.sqrt((d1 ** 2).sum(dim=1))
+        print(torch.max(d1))
+        print(torch.min(d1))
+
+        hist_inten=intensity[select_mask]/(d2*d1) # 形状是[select_num]
+        indices=((d1+d2)/bin_resolution).long() # 计算索引
+        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        ### 这个做法只有在所有片元都能被laser_point看到的情况下才是对的！！！
 
         # 没法传递梯度
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
