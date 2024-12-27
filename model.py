@@ -8,6 +8,7 @@ from pytorch3d.ops.knn import knn_points
 from pytorch3d.transforms import quaternion_to_matrix
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras
 from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics,unproject_depth_image
+import scipy
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
@@ -160,7 +161,11 @@ class Gaussians:
     def _load_points(self, path: str):
 
         data = dict()
-        means = np.load(path)
+
+        if path[-4:]==".npy":
+            means = np.load(path)
+        elif path[-4:]==".mat":
+            means = scipy.io.loadmat(path)["points"]
 
         # Initializing means using the provided point cloud
         data["means"] = torch.tensor(means.astype(np.float32))  # (N, 3)
@@ -1042,7 +1047,7 @@ class Scene:
 
             means_2D=torch.cat(means_2D_list,dim=0)
 
-        image = mask * image + (1.0 - mask) * bg_colour_
+        # image = mask * image + (1.0 - mask) * bg_colour_
 
         return image, depth, mask,means_2D,radii
 
@@ -1078,17 +1083,27 @@ class Scene:
         if intensity.shape[-1]==3:
             intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
         
-        select_mask = torch.where(mask > 0.5, True, False)
+        # select_mask = torch.where(mask > 0.5, True, False) # [H,W]
 
+        select_mask = torch.where(depth > 1.0, True, False) # 深度阈值应该可以调整
         hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
         indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        print(hist_inten.shape)
 
         # 没法传递梯度
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
         # 利用scatter_add将强度值叠加到对应bin
         hist.scatter_add_(0, indices, hist_inten.flatten())
-        hist=torch.clamp(hist,0)
+
+        # with torch.no_grad():
+        #     img = intensity.detach().cpu().numpy()
+        #     mask = mask.detach().cpu().numpy()
+        #     depth = depth.detach().cpu().numpy()
+        #     depth = depth[:, :, 0].astype(np.float32)
+        #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth})
+        #     exit()
 
         return hist,means_2D,radii
 

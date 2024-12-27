@@ -1,20 +1,40 @@
 import os
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import imageio
 import argparse
 import numpy as np
+import math
+import time
 
 from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
 from data_utils import visualize_renders,save_ply,OptimizationParams
+from dataset import ConfocalDataset
+
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
-from dataset import ConfocalDataset
-import time
-import math
+from SSIM import ssim
+
+# a是预测数值，b是真实数值，首先要变成分布
+def CELoss(a,b):
+    a=a+1e-5 # 为了提高数值稳定性
+    a_prob = a / a.sum()   
+    b_prob = b / b.sum()              # 将 b 归一化为概率分布
+    # 步骤 2: 计算交叉熵
+    cross_entropy = -torch.mean(b_prob * torch.log(a_prob+1e-8))
+    return cross_entropy
+
+# 归一化L1损失
+def NormalizeL1Loss(a,b):
+    a=a+1e-5 # 为了提高数值稳定性
+    a_prob = a / a.sum()   
+    b_prob = b / b.sum()              # 将 b 归一化为概率分布
+    return torch.sum((a_prob-b_prob).abs())
 
 def make_trainable(gaussians):
 
@@ -27,6 +47,19 @@ def make_trainable(gaussians):
     
     if not gaussians.is_isotropic:
         gaussians.pre_act_quats.requires_grad=True
+
+def ndc_to_screen_camera(camera, img_size = (128, 128)):
+
+    min_size = min(img_size[0], img_size[1])
+
+    screen_focal = camera.focal_length * min_size / 2.0
+    screen_principal = torch.tensor([[img_size[0]/2, img_size[1]/2]]).to(torch.float32)
+
+    return PerspectiveCameras(
+        R=camera.R, T=camera.T, in_ndc=False,
+        focal_length=screen_focal, principal_point=screen_principal,
+        image_size=(img_size,),
+    )
 
 def run_training(args):
 
@@ -50,12 +83,10 @@ def run_training(args):
 
     # Init gaussians and scene
     gaussians = Gaussians(
-        init_type="points",load_path="results/cow_points.mat",
+        num_points=10000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius
     )
-
-    save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
     scene = Scene(gaussians)
 
@@ -69,7 +100,8 @@ def run_training(args):
     start=time.time()
 
     # Training loop
-    for itr in range(1,args.num_itrs):
+    viz_frames = []
+    for itr in range(1,opt_param.iterations):
 
         # Fetching data
         try:
@@ -93,9 +125,12 @@ def run_training(args):
         current_camera.image_size=(img_size,)
 
         # Rendering histogram using gaussian splatting
-        hist,_,_ = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
+        hist,means_2D,radii = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
                                         args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
         print(torch.max(hist))
+        # hist.retain_grad()
+        
+        visibility_filter= (radii > 0).nonzero() # 选出所有在screen上大小超过0的索引
 
         # Compute loss
         ### YOUR CODE HERE ###
@@ -103,9 +138,39 @@ def run_training(args):
         normal_hist=hist/1000
         loss=torch.mean((normal_hist-gt_hist).abs())
         loss.backward()
+        # print(torch.max(hist.grad.abs()))
 
-        gaussians.optimizer.step()
-        gaussians.optimizer.zero_grad(set_to_none = True)
+        if itr%1000==0:
+            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+
+        ## 自适应更新density
+        with torch.no_grad(): 
+            if itr < opt_param.densify_until_iter:
+                # 记录每个片元在图像上最大的半径
+                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                # 记录每个片元在图像上半径的梯度
+                gaussians.add_densification_stats(means_2D, visibility_filter)
+
+                # 一段时间要增加或删减高斯片元
+                if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
+                    print("densify_and_prune")
+                    size_threshold = 20 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
+                    gaussians.densify_and_prune(
+                        grad_threshold=opt_param.densify_grad_threshold, 
+                        min_opacity=0.005, 
+                        extent=radius*2, 
+                        max_screen_size=size_threshold, 
+                        radii=radii
+                    )
+                
+                # # 重置透明度会导致scatter_add无法形成histogram，所以不要用
+                # if itr % opt_param.opacity_reset_interval == 0 or (itr == opt_param.densify_from_iter):
+                #     print("reset_opacity")
+                #     gaussians.reset_opacity()
+
+            # step的过程会为每个变量创建一个字典，包括step，exp_avg等优化参数，所以我们导入优化参数都用load_state_dict
+            gaussians.optimizer.step()
+            gaussians.optimizer.zero_grad(set_to_none = True)
 
         print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
 

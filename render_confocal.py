@@ -56,22 +56,23 @@ def create_renders(args):
 
                 # 渲染某个视角下的图片
                 img, depth, mask,_,_ = scene.render(current_camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
-                debug_path = "results/gt.png"
+                debug_path = "temp/gt.png"
                 img = img.detach().cpu().numpy()
                 mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
                 depth = depth.detach().cpu().numpy()
 
-                img = (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
-                mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
-
                 # Colouring the depth map
                 depth = depth[:, :, 0].astype(np.float32)  # (H, W) # 有效的depth在5-7之间，因此可以在这个范围归一化配置颜色
+
+                img = (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
+                mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 
                 coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
                 concat = np.concatenate([img, coloured_depth, mask], axis = 1)
                 resized = Image.fromarray(concat).resize((256*3, 256))
                 resized.save(debug_path)
+                # exit()
 
         for i in range(img_size[0]):
             for j in range(img_size[1]):

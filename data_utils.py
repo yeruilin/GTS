@@ -13,6 +13,33 @@ SH_C0 = 0.28209479177387814
 CMAP_JET = plt.get_cmap("jet")
 CMAP_MIN_NORM, CMAP_MAX_NORM = 0.5, 4.0
 
+class OptimizationParams:
+    def __init__(self):
+        self.iterations = 30000
+        self.position_lr_init = 0.00016
+        self.position_lr_final = 0.0000016
+        self.position_lr_delay_mult = 0.01
+        self.position_lr_max_steps = 30000
+        self.feature_lr = 0.0025
+        self.opacity_lr = 0.025
+        self.scaling_lr = 0.005
+        self.rotation_lr = 0.001
+        self.exposure_lr_init = 0.01
+        self.exposure_lr_final = 0.001
+        self.exposure_lr_delay_steps = 0
+        self.exposure_lr_delay_mult = 0.0
+        self.percent_dense = 0.01
+        self.lambda_dssim = 0.2
+        self.densification_interval = 1000 # 重置透明度之后，间隔100次重新增删片元密度
+        self.opacity_reset_interval = 50 # 重置透明度的间隔
+        self.densify_from_iter = 5000 # 超过这个阈值会重置一次透明度
+        self.densify_until_iter = 15_000 # 前15000次都需要增加高斯密度
+        self.densify_grad_threshold = 0.0002
+        self.depth_l1_weight_init = 1.0
+        self.depth_l1_weight_final = 0.01
+        self.random_background = False
+        self.optimizer_type = "default"
+
 class CowDataset(Dataset):
 
     def __init__(self, root, split):

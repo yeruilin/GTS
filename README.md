@@ -62,6 +62,16 @@ sledge.ply渲染的结果保存在results/confocal_snow.mat中。真值就是在
 
 # 3.重建算法
 
+首先，我们尝试给出点云先验来优化。这种情况下，我发现片元的位置几乎是不变的，优化过程主要提升了scale和colour，因此只用1000轮迭代，就从一堆点优化出比较平滑的结果。但是整个过程中loss几乎没有下降。使用 python train_confocal.py 即可复现下面的结果。左边为初始时，右边是迭代后，可以看出优化后变得更平滑接近真实情况，但是means几乎没变。
+
+<p align="center">
+  <img src="results/20241227_init.gif" alt="20241227_init" width=30%/> <img src="results/20241227_final.gif" alt="20241227_final" width=30%/>
+</p>
+
+随后我们尝试增删拷贝点。
+
+# 附录：三维高斯泼墨
+
 We will begin our implementation of a 3D Gaussian rasterizer by first creating functionality to project 3D Gaussians in the world space to 2D Gaussians that lie on the image plane of a camera.
 
 A 3D Gaussian is parameterized by its mean (a 3 dimensional vector) and covariance (a 3x3 matrix). Following equations (5) and (6) of the [original paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf), we can obtain a 2D Gaussian (parameterized by a 2D mean vector and 2x2 covariance matrix) that represents an approximation of the projection of a 3D Gaussian to the image plane of a camera.
