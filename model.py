@@ -633,6 +633,7 @@ class Gaussians:
     def densify_and_prune(self, grad_threshold, min_opacity, extent, max_screen_size, radii):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
+        print(torch.max(grads),torch.mean(grads))
 
         self.tmp_radii = radii
         # 按照位置梯度在增加点云密度
@@ -1090,7 +1091,7 @@ class Scene:
         indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
 
-        print(hist_inten.shape)
+        # print(hist_inten.shape)
 
         # 没法传递梯度
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
