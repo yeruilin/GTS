@@ -27,6 +27,11 @@ def create_renders(args):
         load_path=args.data_path, init_type="gaussians",
         device=args.device
     )
+    # print(torch.max(gaussians.get_scaling))
+    # print(torch.mean(gaussians.get_scaling))
+    # print(torch.max(gaussians.get_opacity))
+    # print(torch.mean(gaussians.get_opacity))
+    # exit()
 
     # Preprocessing for ease of rendering
     new_points = gaussians.means - gaussians.means.mean(dim=0, keepdims=True)

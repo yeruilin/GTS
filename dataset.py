@@ -36,7 +36,7 @@ class ConfocalDataset(Dataset):
             self.obj_radius=1.1
 
             # 数据归一化
-            self.data=self.data/np.max(self.data)
+            # self.data=self.data/np.max(self.data)
 
             self.data=torch.from_numpy(self.data).to(self.device)
 
@@ -50,4 +50,5 @@ class ConfocalDataset(Dataset):
     def __getitem__(self, i):
         ii,jj=divmod(i, self.N)
         scan_point=(self.width/2-self.step*ii,self.width/2-self.step*jj,self.z)
-        return {"hist":self.data[ii,jj,:].reshape(-1),"point":scan_point}
+        hist=self.data[ii,jj,:].reshape(-1)
+        return {"hist":hist/torch.max(hist),"point":scan_point}

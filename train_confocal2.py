@@ -62,9 +62,9 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
-    opt_param.densification_interval=100
+    opt_param.densification_interval=1000
     opt_param.densify_from_iter=1
-    opt_param.densify_grad_threshold=1e-6
+    opt_param.densify_grad_threshold=2e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
@@ -98,14 +98,15 @@ def run_training(args):
         # Rendering histogram using gaussian splatting
         hist,means_2D,radii = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
                                         args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
-        print(torch.max(hist))
+        
         visibility_filter= (radii > 0).nonzero() # 选出所有在screen上大小超过0的索引
 
+        hist_max=torch.max(hist)
+        print(hist_max)
+
         # Compute loss
-        ### YOUR CODE HERE ###
-        # loss=CELoss(hist,gt_hist)
-        normal_hist=hist/20
-        loss=torch.mean((normal_hist-gt_hist).abs())
+        hist=hist/(hist_max+1e-5)
+        loss=torch.mean((hist-gt_hist).abs())
         loss.backward()
 
         if itr%1000==0:
@@ -122,11 +123,11 @@ def run_training(args):
                 # 一段时间要增加或删减高斯片元
                 if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
                     print("densify_and_prune")
-                    size_threshold = 20 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
+                    size_threshold = 10 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
                     gaussians.densify_and_prune(
                         grad_threshold=opt_param.densify_grad_threshold, 
                         min_opacity=0.005, 
-                        extent=radius*2, 
+                        extent=radius, 
                         max_screen_size=size_threshold, 
                         radii=radii
                     )

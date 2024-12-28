@@ -97,11 +97,11 @@ def run_training(args):
         # Rendering histogram using gaussian splatting
         hist,_,_ = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
                                         args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
-        print(torch.max(hist))
+        hist_max=torch.max(hist)
+        print(hist_max)
 
         # Compute loss
-        ### YOUR CODE HERE ###
-        # loss=CELoss(hist,gt_hist)
+        hist=hist/(hist_max+1e-5)
         loss=torch.mean((hist-gt_hist).abs())
         loss.backward()
 
@@ -110,7 +110,7 @@ def run_training(args):
 
         print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
 
-        if itr%10000==0:
+        if itr%1000==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
     end=time.time()
