@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import visualize_renders,save_ply,OptimizationParams
+from data_utils import visualize_renders,save_ply,OptimizationParams,TVLoss
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
@@ -62,8 +62,6 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
-    opt_param.position_lr_init = 0.00016 # 这样设置参数片元均值几乎不会动
-    opt_param.position_lr_final = 0.0000016
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景

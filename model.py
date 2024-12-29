@@ -564,7 +564,9 @@ class Gaussians:
         "scaling" : new_scaling,
         "rotation" : new_rotation}
 
+        # 将新生成的tensor拼接到之前的变量上
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
+        # 然后重新赋值
         self.means = optimizable_tensors["xyz"]
         self.colours = optimizable_tensors["colours"]
         self.pre_act_opacities = optimizable_tensors["opacity"]
@@ -579,7 +581,7 @@ class Gaussians:
     def densify_and_split(self, grads, grad_threshold, scene_extent, copy_num=2):
         # print(grads.shape) # [N,1]
         n_init_points = self.get_xyz.shape[0]
-        # 首先梯度要超过阈值
+        # 首先梯度要超过阈值，但是因为有一部分tensor刚刚被添加上去，因此需要选出有用的梯度
         padded_grad = torch.zeros((n_init_points), device=self.device)
         padded_grad[:grads.shape[0]] = grads.squeeze()
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
@@ -588,6 +590,7 @@ class Gaussians:
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
         # print(selected_pts_mask.shape) # [mask_N]
+        print("Split number:",torch.sum(selected_pts_mask).item())
         # 找到满足条件的片元，然后复制两份
         stds = self.get_scaling[selected_pts_mask].repeat(copy_num,1)
         means =torch.zeros((stds.size(0), 3),device=self.device)
@@ -607,7 +610,7 @@ class Gaussians:
 
         # 将新的split产生的tensor和之前的tensor合并到一起
         self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling, new_rotation, new_tmp_radii)
-
+        # 再把分裂前的tensor删除掉
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(copy_num * selected_pts_mask.sum(), device=self.device, dtype=bool)))
         self.prune_points(prune_filter)
 
@@ -617,7 +620,7 @@ class Gaussians:
         # 要克隆还要片元比较小
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
-        
+        print("Clone number:",torch.sum(selected_pts_mask).item())
         new_xyz = self.means[selected_pts_mask]
         new_colours = self.colours[selected_pts_mask]
         # new_features_dc = self._features_dc[selected_pts_mask]
@@ -636,9 +639,6 @@ class Gaussians:
         print(torch.max(grads),torch.mean(grads))
 
         self.tmp_radii = radii
-        # 按照位置梯度在增加点云密度
-        self.densify_and_clone(grads, grad_threshold, extent)
-        self.densify_and_split(grads, grad_threshold, extent)
 
         # 透明度小于阈值的直接裁剪
         prune_mask = (self.get_opacity < min_opacity).squeeze()
@@ -647,7 +647,14 @@ class Gaussians:
             big_points_vs = self.max_radii2D > max_screen_size
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
+        print("Prune number:",torch.sum(prune_mask).item())
         self.prune_points(prune_mask)
+        grads=grads[~prune_mask]
+
+        # 按照位置梯度在增加点云密度
+        self.densify_and_clone(grads, grad_threshold, extent)
+        self.densify_and_split(grads, grad_threshold, extent)
+        
         tmp_radii = self.tmp_radii
         self.tmp_radii = None
 
@@ -1105,8 +1112,7 @@ class Scene:
         #     depth = depth[:, :, 0].astype(np.float32)
         #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth})
         #     exit()
-
-        return hist,means_2D,radii
+        return hist,means_2D,radii,intensity
 
     def render_nonconf_hist(
         self, camera,

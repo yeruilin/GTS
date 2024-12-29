@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import visualize_renders,save_ply,OptimizationParams
+from data_utils import visualize_renders,save_ply,OptimizationParams,TVLoss
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
