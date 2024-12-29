@@ -122,7 +122,7 @@ class Gaussians:
         self.xyz_gradient_accum = torch.empty(0) # training_setup函数中初始化
         self.denom = torch.empty(0)
         self.optimizer = None
-        self.percent_dense = 0
+        self.percent_dense = 0.01
         self.spatial_lr_scale = 1.0 # 和空间大小有关的参数
 
         self.sphere=False # 是否使用球谐函数
@@ -468,7 +468,7 @@ class Gaussians:
         return self.means
     
     def training_setup(self, training_args):
-        self.percent_dense = training_args.percent_dense # 0.01，用于将百分比转换为小数
+        self.percent_dense = 0.01
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
 
@@ -586,7 +586,7 @@ class Gaussians:
         padded_grad[:grads.shape[0]] = grads.squeeze()
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         # print(selected_pts_mask.shape) # [N]
-        # 尺寸需要比较大
+
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
         # print(selected_pts_mask.shape) # [mask_N]
@@ -617,14 +617,12 @@ class Gaussians:
     def densify_and_clone(self, grads, grad_threshold, scene_extent):
         # 首先梯度要超过阈值
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
-        # 要克隆还要片元比较小
+
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
         print("Clone number:",torch.sum(selected_pts_mask).item())
-        new_xyz = self.means[selected_pts_mask]
+        new_xyz = self.means[selected_pts_mask]+0.001*grads[selected_pts_mask]
         new_colours = self.colours[selected_pts_mask]
-        # new_features_dc = self._features_dc[selected_pts_mask]
-        # new_features_rest = self._features_rest[selected_pts_mask]
         new_opacities = self.pre_act_opacities[selected_pts_mask]
         new_scaling = self.pre_act_scales[selected_pts_mask]
         new_rotation = self.pre_act_quats[selected_pts_mask]
@@ -640,21 +638,22 @@ class Gaussians:
 
         self.tmp_radii = radii
 
-        # 透明度小于阈值的直接裁剪
-        prune_mask = (self.get_opacity < min_opacity).squeeze()
-        # 投影后太大的片元要被删除
-        if max_screen_size:
-            big_points_vs = self.max_radii2D > max_screen_size
-            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
-            prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
-        print("Prune number:",torch.sum(prune_mask).item())
-        self.prune_points(prune_mask)
-        grads=grads[~prune_mask]
-
         # 按照位置梯度在增加点云密度
         self.densify_and_clone(grads, grad_threshold, extent)
         self.densify_and_split(grads, grad_threshold, extent)
-        
+
+        # 透明度小于阈值的直接裁剪
+        prune_mask1 = (self.get_opacity < min_opacity).squeeze()
+        prune_mask2 = (self.colours < 0.01).squeeze()
+        prune_mask = torch.logical_or(prune_mask1,prune_mask2)
+        # # 投影后太大的片元要被删除
+        # if max_screen_size:
+        #     big_points_vs = self.max_radii2D > max_screen_size
+        #     big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+        #     prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
+        print("Prune number:",torch.sum(prune_mask).item())
+        self.prune_points(prune_mask)
+
         tmp_radii = self.tmp_radii
         self.tmp_radii = None
 
@@ -1112,7 +1111,7 @@ class Scene:
         #     depth = depth[:, :, 0].astype(np.float32)
         #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth})
         #     exit()
-        return hist,means_2D,radii,intensity
+        return hist,means_2D,radii
 
     def render_nonconf_hist(
         self, camera,

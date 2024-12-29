@@ -33,7 +33,7 @@ class OptimizationParams:
         self.densification_interval = 1000 # 重置透明度之后，间隔100次重新增删片元密度
         self.opacity_reset_interval = 50 # 重置透明度的间隔
         self.densify_from_iter = 5000 # 超过这个阈值会重置一次透明度
-        self.densify_until_iter = 15_000 # 前15000次都需要增加高斯密度
+        self.densify_until_iter = 15_0000 # 前15000次都需要增加高斯密度
         self.densify_grad_threshold = 0.0002
         self.depth_l1_weight_init = 1.0
         self.depth_l1_weight_final = 0.01

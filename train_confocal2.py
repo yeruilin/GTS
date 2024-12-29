@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import visualize_renders,save_ply,OptimizationParams,TVLoss
+from data_utils import visualize_renders,save_ply,OptimizationParams
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
@@ -62,9 +62,9 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
-    opt_param.densification_interval=1000
+    opt_param.densification_interval=1000 # 进行增删片元的间隔
     opt_param.densify_from_iter=1
-    opt_param.densify_grad_threshold=2e-3
+    opt_param.densify_grad_threshold=0.2
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
@@ -118,7 +118,7 @@ def run_training(args):
                 # 记录每个片元在图像上最大的半径
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 # 记录每个片元在图像上半径的梯度
-                gaussians.add_densification_stats(means_2D, visibility_filter)
+                gaussians.add_densification_stats(gaussians.means, visibility_filter)
 
                 # 一段时间要增加或删减高斯片元
                 if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
@@ -131,6 +131,7 @@ def run_training(args):
                         max_screen_size=size_threshold, 
                         radii=radii
                     )
+                    save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
 

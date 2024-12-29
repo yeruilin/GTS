@@ -32,6 +32,7 @@ def create_renders(args):
     # print(torch.max(gaussians.get_opacity))
     # print(torch.mean(gaussians.get_opacity))
     # exit()
+    filename=args.data_path.split("/")[-1][:-4]
 
     # Preprocessing for ease of rendering
     new_points = gaussians.means - gaussians.means.mean(dim=0, keepdims=True)
@@ -80,7 +81,7 @@ def create_renders(args):
 
         imgs.append(np.array(resized))
 
-    gif_path = os.path.join(args.out_path, "q1_render.gif")
+    gif_path = os.path.join(args.out_path, f"{filename}.gif")
     imageio.mimwrite(gif_path, imgs, duration=1000.0*(1/10.0), loop=0)
 
 def get_args():
