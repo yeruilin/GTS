@@ -77,7 +77,7 @@ def create_renders(args):
         for i in range(img_size[0]):
             for j in range(img_size[1]):
                 print(i,j)
-                scan_point=(args.width/2-step*i,args.width/2-step*j,-2.0) # 扫描点在z=2.0的位置
+                scan_point=(-args.width/2+step*i,-args.width/2+step*j,-2.0) # 扫描点在z=2.0的位置
                 dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
                 fov=2*math.asin(radius/dist)
                 R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
@@ -89,7 +89,7 @@ def create_renders(args):
                 current_camera.image_size=(img_size,)
 
                 # Rendering histogram using gaussian splatting
-                hist,_,_ = scene.render_conf_hist(current_camera,args.bin_resolution,args.bin,
+                hist,_,= scene.render_conf_hist(current_camera,args.bin_resolution,args.bin,
                                               args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
                 transient_map[i,j,:]=hist.detach().cpu().numpy()
 

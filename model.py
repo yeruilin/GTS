@@ -188,6 +188,11 @@ class Gaussians:
 
         if not self.is_isotropic:
             data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
+        
+        # 计算场景大致范围
+        self.center=torch.mean(data["means"],dim=0)
+        _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
+        self.radius=torch.max(_range).to(self.device)
 
         return data
 
@@ -984,17 +989,7 @@ class Scene:
         means_3D = self.gaussians.means[idxs]
 
         # For questions 1.1, 1.2 and 1.3.2, use the below line of code for colours.
-        if not self.gaussians.sphere:
-            colours = self.gaussians.colours[idxs] # 不用球谐分量
-
-        # [Q 1.3.1] For question 1.3.1, uncomment the below three lines to calculate the
-        # colours instead of using self.gaussians.colours[idxs]. You may also comment
-        # out the above line of code since it will be overwritten anyway.
-        # 使用球谐分量
-        else:
-            spherical_harmonics = self.gaussians.spherical_harmonics[idxs]
-            gaussian_dirs = self.calculate_gaussian_directions(means_3D, camera)
-            colours = colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs)
+        colours = self.gaussians.colours[idxs] # 不用球谐分量
 
         # Apply activations
         quats, scales, opacities = self.gaussians.apply_activations(
@@ -1014,7 +1009,7 @@ class Scene:
             # Get image, depth and mask via splatting
             image, depth, mask, _,means_2D,radii = self.splat(
                 camera, means_3D, z_vals, quats, scales,
-                colours, opacities, img_size,no_grad=no_grad
+                colours**2, opacities, img_size,no_grad=no_grad
             )
 
         # In this case we splat per_splat number of gaussians per iteration. This makes
@@ -1042,7 +1037,7 @@ class Scene:
 
                 # Get image, depth and mask via splatting
                 image_, depth_, mask_, start_transmittance,means_2D_,radii_ = self.splat(
-                    camera, means_3D_, z_vals_, quats_, scales_, colours_,
+                    camera, means_3D_, z_vals_, quats_, scales_, colours_**2,
                     opacities_, img_size, start_transmittance,no_grad=no_grad
                 ) # 这里means_2D没有累加，此模式运行有问题，必须一次全导入
 
@@ -1092,7 +1087,7 @@ class Scene:
         
         # select_mask = torch.where(mask > 0.5, True, False) # [H,W]
 
-        select_mask = torch.where(depth > 1.0, True, False) # 深度阈值应该可以调整
+        select_mask = torch.where(depth > 0.1, True, False) # 深度阈值应该可以调整
         hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
         indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
@@ -1111,7 +1106,7 @@ class Scene:
         #     depth = depth[:, :, 0].astype(np.float32)
         #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth})
         #     exit()
-        return hist,means_2D,radii
+        return hist,radii
 
     def render_nonconf_hist(
         self, camera,

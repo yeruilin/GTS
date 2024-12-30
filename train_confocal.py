@@ -62,6 +62,8 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
+    opt_param.position_lr_init = 0.001
+    opt_param.position_lr_final = 0.0001
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
@@ -93,20 +95,20 @@ def run_training(args):
         current_camera.image_size=(img_size,)
 
         # Rendering histogram using gaussian splatting
-        hist,_,_ = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
+        hist,_ = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
                                         args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
         hist_max=torch.max(hist)
         print(hist_max)
 
-        # Compute loss
-        hist=hist/(hist_max+1e-5)
-        loss=torch.mean((hist-gt_hist).abs())
-        loss.backward()
+        if hist_max>1e-5:
+            # Compute loss
+            loss=torch.mean((hist-gt_hist).abs())
+            loss.backward()
 
-        gaussians.optimizer.step()
-        gaussians.optimizer.zero_grad(set_to_none = True)
+            gaussians.optimizer.step()
+            gaussians.optimizer.zero_grad(set_to_none = True)
 
-        print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
+            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
 
         if itr%1000==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)

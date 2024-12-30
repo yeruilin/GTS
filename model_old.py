@@ -122,8 +122,6 @@ class Gaussians:
         self.percent_dense = 0
         self.spatial_lr_scale = 1.0 # 和空间大小有关的参数
 
-        self.extent=0.0 # 随机初始空间大小
-
         self.sphere=False # 是否使用球谐函数
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
         if data.get("spherical_harmonics") is not None:
@@ -154,7 +152,12 @@ class Gaussians:
 
         if data["pre_act_scales"].shape[1] != 3:
             # raise NotImplementedError("Currently does not support isotropic")
-            is_isotropic=True        
+            is_isotropic=True    
+
+        # 计算场景大致范围
+        _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
+        self.extent=1.0*torch.max(_range).to(self.device)
+        print("extent:",self.extent)    
 
         return data, is_isotropic
 

@@ -15,6 +15,7 @@ from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from dataset import ConfocalDataset
 import time
 import math
+import scipy
 
 def make_trainable(gaussians):
 
@@ -44,7 +45,7 @@ def run_training(args):
     print("object center:",object_center)
 
     train_loader = DataLoader(
-        dataset, batch_size=1, shuffle=True
+        dataset, batch_size=1, shuffle=False
     )
     train_itr = iter(train_loader)
 
@@ -55,6 +56,13 @@ def run_training(args):
         colour_dim=1,extent=radius
     )
 
+    # # 随机初始化
+    # gaussians = Gaussians(
+    #     num_points=10000, init_type="random",
+    #     device=args.device, isotropic=True,
+    #     colour_dim=1,extent=radius
+    # )
+
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
     scene = Scene(gaussians)
@@ -64,7 +72,7 @@ def run_training(args):
     opt_param=OptimizationParams() # 设置优化参数
     opt_param.densification_interval=1000 # 进行增删片元的间隔
     opt_param.densify_from_iter=1
-    opt_param.densify_grad_threshold=0.2
+    opt_param.densify_grad_threshold=2e-4
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
@@ -96,46 +104,52 @@ def run_training(args):
         current_camera.image_size=(img_size,)
 
         # Rendering histogram using gaussian splatting
-        hist,means_2D,radii = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
+        hist,radii = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
                                         args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
         
         visibility_filter= (radii > 0).nonzero() # 选出所有在screen上大小超过0的索引
 
         hist_max=torch.max(hist)
-        print(hist_max)
+        if hist_max>1e-5:
+            # Compute loss
+            loss=torch.mean((hist-gt_hist).abs())
+            loss.backward()
 
-        # Compute loss
-        hist=hist/(hist_max+1e-5)
-        loss=torch.mean((hist-gt_hist).abs())
-        loss.backward()
+            if(torch.max(gaussians.means.grad)>1e-5):
+                print(itr,torch.max(gaussians.means.grad),hist_max)
+
+            ## 自适应更新density
+            with torch.no_grad(): 
+                if itr < opt_param.densify_until_iter:
+                    # 记录每个片元在图像上最大的半径
+                    gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                    # 记录每个片元在图像上半径的梯度
+                    gaussians.add_densification_stats(gaussians.means, visibility_filter)
 
         if itr%1000==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-
-        ## 自适应更新density
+        
         with torch.no_grad(): 
-            if itr < opt_param.densify_until_iter:
-                # 记录每个片元在图像上最大的半径
-                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                # 记录每个片元在图像上半径的梯度
-                gaussians.add_densification_stats(gaussians.means, visibility_filter)
-
-                # 一段时间要增加或删减高斯片元
-                if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
-                    print("densify_and_prune")
-                    size_threshold = 10 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
-                    gaussians.densify_and_prune(
-                        grad_threshold=opt_param.densify_grad_threshold, 
-                        min_opacity=0.005, 
-                        extent=radius, 
-                        max_screen_size=size_threshold, 
-                        radii=radii
-                    )
-                    save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            # 一段时间要增加或删减高斯片元
+            if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
+                print("densify_and_prune")
+                size_threshold = 10 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
+                gaussians.densify_and_prune(
+                    grad_threshold=opt_param.densify_grad_threshold, 
+                    min_opacity=0.005, 
+                    extent=radius, 
+                    max_screen_size=size_threshold, 
+                    radii=radii
+                )
+                save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+        
+        if hist_max>1e-5:
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
-
-        print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
+            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
+        else:
+            print(itr)
+            exit()
 
     end=time.time()
     print("Training Completed. Training time:", end-start)
