@@ -172,7 +172,7 @@ class Gaussians:
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = 8.0 * torch.ones((len(means),), dtype=torch.float32)  # (N,)
+        data["pre_act_opacities"] = -4.0 * torch.ones((len(means),), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
         data["colours"] = torch.rand((len(means), self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
@@ -471,6 +471,9 @@ class Gaussians:
     @property
     def get_xyz(self):
         return self.means
+    @property
+    def get_colour(self):
+        return self.colours**2
     
     def training_setup(self, training_args):
         self.percent_dense = 0.01
@@ -626,7 +629,7 @@ class Gaussians:
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
         print("Clone number:",torch.sum(selected_pts_mask).item())
-        new_xyz = self.means[selected_pts_mask]+0.001*grads[selected_pts_mask]
+        new_xyz = self.means[selected_pts_mask]#+1e-4*grads[selected_pts_mask]
         new_colours = self.colours[selected_pts_mask]
         new_opacities = self.pre_act_opacities[selected_pts_mask]
         new_scaling = self.pre_act_scales[selected_pts_mask]
@@ -649,7 +652,8 @@ class Gaussians:
 
         # 透明度小于阈值的直接裁剪
         prune_mask1 = (self.get_opacity < min_opacity).squeeze()
-        prune_mask2 = (self.colours < 0.01).squeeze()
+        # prune_mask2 = (self.get_colour < 1e-4).squeeze()
+        prune_mask2=self.get_scaling.max(dim=1).values > 0.1 * extent
         prune_mask = torch.logical_or(prune_mask1,prune_mask2)
         # # 投影后太大的片元要被删除
         # if max_screen_size:
@@ -684,8 +688,8 @@ class Gaussians:
         return optimizable_tensors
     
     # 计算一段时间，重置透明度，这样就能删掉一部分高斯元
-    def reset_opacity(self):
-        opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.01))
+    def reset_opacity(self,opacity_thresh=0.01):
+        opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*opacity_thresh))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self.pre_act_opacities = optimizable_tensors["opacity"]
 
@@ -989,7 +993,7 @@ class Scene:
         means_3D = self.gaussians.means[idxs]
 
         # For questions 1.1, 1.2 and 1.3.2, use the below line of code for colours.
-        colours = self.gaussians.colours[idxs] # 不用球谐分量
+        colours = self.gaussians.get_colour[idxs] # 不用球谐分量
 
         # Apply activations
         quats, scales, opacities = self.gaussians.apply_activations(
@@ -1009,7 +1013,7 @@ class Scene:
             # Get image, depth and mask via splatting
             image, depth, mask, _,means_2D,radii = self.splat(
                 camera, means_3D, z_vals, quats, scales,
-                colours**2, opacities, img_size,no_grad=no_grad
+                colours, opacities, img_size,no_grad=no_grad
             )
 
         # In this case we splat per_splat number of gaussians per iteration. This makes
@@ -1037,7 +1041,7 @@ class Scene:
 
                 # Get image, depth and mask via splatting
                 image_, depth_, mask_, start_transmittance,means_2D_,radii_ = self.splat(
-                    camera, means_3D_, z_vals_, quats_, scales_, colours_**2,
+                    camera, means_3D_, z_vals_, quats_, scales_, colours_,
                     opacities_, img_size, start_transmittance,no_grad=no_grad
                 ) # 这里means_2D没有累加，此模式运行有问题，必须一次全导入
 
@@ -1104,7 +1108,8 @@ class Scene:
         #     mask = mask.detach().cpu().numpy()
         #     depth = depth.detach().cpu().numpy()
         #     depth = depth[:, :, 0].astype(np.float32)
-        #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth})
+        #     histtt=hist.detach().cpu().numpy()
+        #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth,"hist":histtt})
         #     exit()
         return hist,radii
 

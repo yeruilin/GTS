@@ -45,14 +45,24 @@ def run_training(args):
 
     point_path=args.data_path.replace(".mat","_points.mat")
 
-    # Init gaussians and scene
+    # # Init gaussians and scene
+    # gaussians = Gaussians(
+    #     init_type="points",load_path=point_path,
+    #     device=args.device, isotropic=True,colour_dim=1
+    # )
+    # object_center=gaussians.center.detach().cpu().numpy()
+    # object_center=(object_center[0],object_center[1],object_center[2])
+    # radius=gaussians.radius.item()
+
+    # 随机初始化
+    radius=1.3
+    object_center=(0.0,0.0,0.0)
     gaussians = Gaussians(
-        init_type="points",load_path=point_path,
-        device=args.device, isotropic=True,colour_dim=1
+        num_points=3000, init_type="random",
+        device=args.device, isotropic=True,
+        colour_dim=1,extent=radius
     )
-    object_center=gaussians.center.detach().cpu().numpy()
-    object_center=(object_center[0],object_center[1],object_center[2])
-    radius=gaussians.radius.item()
+
     print("radius:",radius)
     print("center:",object_center)
 
@@ -63,9 +73,9 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
-    opt_param.densification_interval=500 # 进行增删片元的间隔
-    opt_param.densify_from_iter=1
-    opt_param.densify_grad_threshold=2e-4
+    opt_param.densification_interval=100 # 进行增删片元的间隔
+    opt_param.densify_from_iter=300
+    opt_param.densify_grad_threshold=5e-4
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
@@ -113,19 +123,32 @@ def run_training(args):
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
-        with torch.no_grad(): 
+        with torch.no_grad():
+            # 统计梯度
+            if itr > opt_param.densify_from_iter:
+                # # 记录每个片元在图像上最大的半径
+                # gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                # 记录每个片元在图像上半径的梯度
+                visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
+                gaussians.add_densification_stats(gaussians.means, visibility_filter)
+                
             # 一段时间要增加或删减高斯片元
             if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
                 print("densify_and_prune")
                 size_threshold = 10 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
                 gaussians.densify_and_prune(
                     grad_threshold=opt_param.densify_grad_threshold, 
-                    min_opacity=0.005, 
+                    min_opacity=0.01, 
                     extent=radius, 
                     max_screen_size=size_threshold, 
                     radii=radii
                 )
                 save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+
+            # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
+            if itr % opt_param.opacity_reset_interval == 0 or (itr == opt_param.densify_from_iter):
+                print("reset_opacity")
+                gaussians.reset_opacity(opacity_thresh=0.02)
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)

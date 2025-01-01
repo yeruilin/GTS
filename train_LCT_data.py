@@ -45,7 +45,7 @@ def run_training(args):
 
     point_path=args.data_path.replace(".mat","_points.mat")
 
-    # Init gaussians and scene
+    # 点云初始化
     gaussians = Gaussians(
         init_type="points",load_path=point_path,
         device=args.device, isotropic=True,colour_dim=1
@@ -53,6 +53,7 @@ def run_training(args):
     object_center=gaussians.center.detach().cpu().numpy()
     object_center=(object_center[0],object_center[1],object_center[2])
     radius=gaussians.radius.item()
+
     print("radius:",radius)
     print("center:",object_center)
 
