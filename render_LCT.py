@@ -41,7 +41,7 @@ def create_renders(args):
 
     imgs = []
     for i in tqdm(range(num_views), desc="Rendering"):
-        dist = gaussians.extent.item()*4
+        dist = gaussians.radius.item()*8
         R, T = look_at_view_transform(dist = dist, azim=azims[i], elev=30.0, up=((0, 1, 0),))
         camera = PerspectiveCameras(
             focal_length=5.0 * dim/2.0, in_ndc=False,

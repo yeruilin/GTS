@@ -16,6 +16,7 @@ import time
 import math
 import scipy
 import matplotlib.pyplot as plt
+from SSIM import ssim
 
 def make_trainable(gaussians):
 
@@ -34,7 +35,7 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    dataset= LCTDataset(args.data_path,device=args.device,z=-2.0)
+    dataset= LCTDataset(args.data_path,device=args.device)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -111,7 +112,11 @@ def run_training(args):
             print(hist_max)
 
         hist=torch.cat(hist_list,dim=0)
+        # print(hist.shape) # [16,512]
+        # print(gt_hist.shape) # [16,512]
         loss=torch.mean((hist-gt_hist).abs())
+        # ssimloss=1-ssim(hist.unsqueeze(0).unsqueeze(0),gt_hist.unsqueeze(0)) # SSIM会大大降低收敛速度
+        # loss=0.9*L1loss+0.1*ssimloss
         loss.backward()
         loss_list.append(loss.item()) 
 

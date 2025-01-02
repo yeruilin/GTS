@@ -61,7 +61,7 @@ class LCTDataset(Dataset):
                 self.bin_resolution=self.bin_resolution*3e8
             self.width=data_dict["width"]
             if type(self.width)!=float:
-                self.width=self.width[0][0]
+                self.width=self.width[0][0]+0.0
             
             self.data=data_dict["data"] # [N,N,M]
             self.N=self.data.shape[0]

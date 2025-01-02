@@ -192,7 +192,7 @@ class Gaussians:
         # 计算场景大致范围
         self.center=torch.mean(data["means"],dim=0)
         _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
-        self.radius=torch.max(_range).to(self.device)
+        self.radius=torch.max(_range/2.0).to(self.device)
 
         return data
 
@@ -206,7 +206,7 @@ class Gaussians:
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = 8.0 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
+        data["pre_act_opacities"] = -3.6 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
         data["colours"] = torch.rand((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)

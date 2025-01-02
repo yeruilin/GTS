@@ -156,8 +156,8 @@ class Gaussians:
 
         # 计算场景大致范围
         _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
-        self.extent=1.0*torch.max(_range).to(self.device)
-        print("extent:",self.extent)    
+        self.radius=0.5*torch.max(_range).to(self.device)
+        print("radius:",self.radius)    
 
         return data, is_isotropic
 
@@ -187,8 +187,8 @@ class Gaussians:
 
         # 计算场景大致范围
         _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
-        self.extent=1.0*torch.max(_range).to(self.device)
-        print("extent:",self.extent)
+        self.radius=0.5*torch.max(_range).to(self.device)
+        print("radius:",self.radius)
 
         if not self.is_isotropic:
             data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
@@ -203,8 +203,8 @@ class Gaussians:
         data["means"] = torch.randn((num_points, 3)).to(torch.float32) * 0.2  # (N, 3)
         # 计算场景大致范围
         _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
-        self.extent=1.0*torch.max(_range).to(self.device)
-        print("extent:",self.extent)
+        self.radius=0.5*torch.max(_range).to(self.device)
+        print("radius:",self.radius)
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
@@ -699,7 +699,7 @@ class Scene:
     def __init__(self, gaussians: Gaussians):
         self.gaussians = gaussians
         self.device = self.gaussians.device
-        self.cameras_extent=gaussians.extent
+        self.cameras_extent=gaussians.radius*2
 
     def __repr__(self):
         return f"<Scene with {len(self.gaussians)} Gaussians>"

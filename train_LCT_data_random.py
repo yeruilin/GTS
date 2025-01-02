@@ -28,6 +28,8 @@ def make_trainable(gaussians):
     if not gaussians.is_isotropic:
         gaussians.pre_act_quats.requires_grad=True
 
+
+### 随机初始化训练模型
 def run_training(args):
 
     if not os.path.exists(args.out_path):
@@ -45,23 +47,23 @@ def run_training(args):
 
     point_path=args.data_path.replace(".mat","_points.mat")
 
-    # Init gaussians and scene
-    gaussians = Gaussians(
-        init_type="points",load_path=point_path,
-        device=args.device, isotropic=True,colour_dim=1
-    )
-    object_center=gaussians.center.detach().cpu().numpy()
-    object_center=(object_center[0],object_center[1],object_center[2])
-    radius=gaussians.radius.item()
-
-    # # 随机初始化
-    # radius=0.8
-    # object_center=(0.0,0.0,1.3)
+    # # Init gaussians and scene
     # gaussians = Gaussians(
-    #     num_points=3000, init_type="random",
-    #     device=args.device, isotropic=True,
-    #     colour_dim=1,extent=radius
+    #     init_type="points",load_path=point_path,
+    #     device=args.device, isotropic=True,colour_dim=1
     # )
+    # object_center=gaussians.center.detach().cpu().numpy()
+    # object_center=(object_center[0],object_center[1],object_center[2])
+    # radius=gaussians.radius.item()
+
+    # 随机初始化
+    radius=0.8
+    object_center=(0.0,0.0,1.3)
+    gaussians = Gaussians(
+        num_points=3000, init_type="random",
+        device=args.device, isotropic=True,
+        colour_dim=1,extent=radius
+    )
 
     print("radius:",radius)
     print("center:",object_center)
@@ -75,8 +77,8 @@ def run_training(args):
     opt_param=OptimizationParams() # 设置优化参数
     opt_param.densification_interval=100 # 进行增删片元的间隔
     opt_param.densify_from_iter=600
-    opt_param.densify_grad_threshold=5e-4
-    # opt_param.position_lr_init=0.00032
+    opt_param.densify_grad_threshold=5e-3
+    opt_param.position_lr_init=0.00032
     gaussians.training_setup(opt_param) # 设置优化模式
 
     bg_colour=(0.0,0.0,0.0) # 白色背景
