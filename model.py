@@ -172,7 +172,7 @@ class Gaussians:
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = -4.0 * torch.ones((len(means),), dtype=torch.float32)  # (N,)
+        data["pre_act_opacities"] = 8.0 * torch.ones((len(means),), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
         data["colours"] = torch.rand((len(means), self.colour_dim), dtype=torch.float32)  # (N, colour_dim)

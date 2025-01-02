@@ -45,23 +45,23 @@ def run_training(args):
 
     point_path=args.data_path.replace(".mat","_points.mat")
 
-    # # Init gaussians and scene
-    # gaussians = Gaussians(
-    #     init_type="points",load_path=point_path,
-    #     device=args.device, isotropic=True,colour_dim=1
-    # )
-    # object_center=gaussians.center.detach().cpu().numpy()
-    # object_center=(object_center[0],object_center[1],object_center[2])
-    # radius=gaussians.radius.item()
-
-    # 随机初始化
-    radius=1.3
-    object_center=(0.0,0.0,0.0)
+    # Init gaussians and scene
     gaussians = Gaussians(
-        num_points=3000, init_type="random",
-        device=args.device, isotropic=True,
-        colour_dim=1,extent=radius
+        init_type="points",load_path=point_path,
+        device=args.device, isotropic=True,colour_dim=1
     )
+    object_center=gaussians.center.detach().cpu().numpy()
+    object_center=(object_center[0],object_center[1],object_center[2])
+    radius=gaussians.radius.item()
+
+    # # 随机初始化
+    # radius=1.3
+    # object_center=(0.0,0.0,0.0)
+    # gaussians = Gaussians(
+    #     num_points=3000, init_type="random",
+    #     device=args.device, isotropic=True,
+    #     colour_dim=1,extent=radius
+    # )
 
     print("radius:",radius)
     print("center:",object_center)
@@ -145,10 +145,10 @@ def run_training(args):
                 )
                 save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
-            # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-            if itr % opt_param.opacity_reset_interval == 0 or (itr == opt_param.densify_from_iter):
-                print("reset_opacity")
-                gaussians.reset_opacity(opacity_thresh=0.02)
+            # # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
+            # if itr % opt_param.opacity_reset_interval == 0 or (itr == opt_param.densify_from_iter):
+            #     print("reset_opacity")
+            #     gaussians.reset_opacity(opacity_thresh=0.01)
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
@@ -171,7 +171,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="data/mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(

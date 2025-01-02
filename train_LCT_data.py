@@ -15,6 +15,7 @@ from dataset import LCTDataset
 import time
 import math
 import scipy
+import matplotlib.pyplot as plt
 
 def make_trainable(gaussians):
 
@@ -72,6 +73,8 @@ def run_training(args):
 
     start=time.time()
 
+    loss_list=[]
+
     # Training loop
     for itr in range(1,args.num_itrs):
 
@@ -110,6 +113,7 @@ def run_training(args):
         hist=torch.cat(hist_list,dim=0)
         loss=torch.mean((hist-gt_hist).abs())
         loss.backward()
+        loss_list.append(loss.item()) 
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
@@ -127,6 +131,10 @@ def run_training(args):
     save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
     print("Save ply!")
 
+    plt.plot(loss_list)
+    plt.savefig("temp/loss_figure.png")
+    print("Save loss figure!")
+
 def get_args():
 
     parser = argparse.ArgumentParser()
@@ -135,7 +143,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="data/mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(
