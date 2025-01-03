@@ -36,7 +36,7 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    # # Init gaussians and scene
+    ### Init gaussians and scene
     # point_path=args.data_path.replace(".mat","_points.mat")
     # gaussians = Gaussians(
     #     init_type="points",load_path=point_path,
@@ -46,8 +46,8 @@ def run_training(args):
     # object_center=(object_center[0],object_center[1],object_center[2])
     # radius=gaussians.radius.item()
 
-    # 随机初始化
-    radius=0.8
+    # # 随机初始化
+    radius=0.65
     object_center=(0.0,0.0,1.3)
     gaussians = Gaussians(
         num_points=3000, init_type="random",
@@ -139,16 +139,16 @@ def run_training(args):
     ############################################
     ## 第二步：训练，用8*8子图优化，这里子图越大肯定越好，但计算图很耗费显存
     ############################################
-    dataset= ConfocalDataset(args.data_path,device=args.device) # 连续点
+    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True) # 连续点
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
     opt_param=OptimizationParams()
-    opt_param.densification_interval=64 # 进行增删片元的间隔
-    opt_param.densify_from_iter=384
+    opt_param.densification_interval=100 # 进行增删片元的间隔
+    opt_param.densify_from_iter=400
     opt_param.densify_grad_threshold=5e-3
-    opt_param.position_lr_init=5e-3
+    # opt_param.position_lr_init=5e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
     loss_list=[]
@@ -182,7 +182,7 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size)
+            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
             hist_max=torch.max(hist)
             print(hist_max)
@@ -191,7 +191,7 @@ def run_training(args):
         loss.backward()
         loss_list.append(loss.item())
 
-        if itr%64==0:
+        if itr%50==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))

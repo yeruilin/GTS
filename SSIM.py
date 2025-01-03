@@ -77,3 +77,32 @@ def ssim(img1, img2, window_size=11, size_average=True):
     window = window.type_as(img1)
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
+
+# 用这个没有梯度
+def ssim_hist(hist1, hist2, window_size=11):
+
+    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
+    window = Variable(_1D_window.view(1, 1, window_size).contiguous()).to(hist1.device).type_as(hist1)
+
+    hist1=hist1.view(1,1,-1)
+    hist2=hist2.view(1,1,-1)
+
+    mu1 = F.conv1d(hist1, window, padding=window_size // 2, groups=1)
+    mu2 = F.conv1d(hist2, window, padding=window_size // 2, groups=1)
+
+    mu1_sq = mu1.pow(2) # x,y的均值
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    # Var[x]=E[x^2]-E[x]^2
+    # Cov[x,y]=E[x*y]-E[x]*E[y]
+    sigma1_sq = F.conv1d(hist1 * hist1, window, padding=window_size // 2, groups=1) - mu1_sq # x,y的方差
+    sigma2_sq = F.conv1d(hist2 * hist2, window, padding=window_size // 2, groups=1) - mu2_sq
+    sigma12 = F.conv1d(hist1 * hist2, window, padding=window_size // 2, groups=1) - mu1_mu2 # 协方差
+
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+
+    ssim_hist = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+
+    return torch.mean(ssim_hist)

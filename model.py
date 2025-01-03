@@ -147,6 +147,11 @@ class Gaussians:
         if data["pre_act_scales"].shape[1] != 3:
             is_isotropic=True
 
+        # 计算场景大致范围
+        self.center=torch.mean(data["means"],dim=0)
+        _range=torch.max(data["means"],dim=0)[0]-torch.min(data["means"],dim=0)[0]
+        self.radius=torch.max(_range/2.0).to(self.device)
+
         return data, is_isotropic
 
     def _load_points(self, path: str):
@@ -1039,7 +1044,7 @@ class Scene:
 
     def render_conf_hist(
         self, camera,bin_resolution,num_bins,
-        per_splat: int = -1, img_size: Tuple = (128, 128)
+        per_splat: int = -1, img_size: Tuple = (128, 128),is_train=False # 是否进入训练模式（强度-深度解耦）
     ):
         intensity, depth=self.render(camera,per_splat,img_size)
         if intensity.shape[-1]==3:
@@ -1055,7 +1060,10 @@ class Scene:
         # 没法传递梯度
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
         # 利用scatter_add将强度值叠加到对应bin
-        hist.scatter_add_(0, indices, hist_inten.flatten())
+        if is_train:
+            hist.scatter_add_(0, indices,intensity[select_mask].flatten())
+        else:
+            hist.scatter_add_(0, indices, hist_inten.flatten())
 
         # with torch.no_grad():
         #     img = intensity.detach().cpu().numpy()

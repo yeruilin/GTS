@@ -16,7 +16,7 @@ import time
 import math
 import scipy
 import matplotlib.pyplot as plt
-from SSIM import ssim
+from SSIM import ssim,ssim_hist
 
 def make_trainable(gaussians):
 
@@ -35,7 +35,7 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    dataset= ConfocalDataset(args.data_path,device=args.device)
+    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -98,11 +98,11 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size)
+            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
             hist_max=torch.max(hist)
             print(hist_max)
-            loss+=torch.mean((hist-gt_hist).abs())
+            loss+=torch.mean((hist-gt_hist).abs()) # MSE的效果不好，初始梯度太大，容易畸变
             
         loss.backward()
         loss_list.append(loss.item()) 

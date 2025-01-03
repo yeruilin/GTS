@@ -34,7 +34,7 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    dataset= ConfocalDataset(args.data_path,device=args.device)
+    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -74,8 +74,8 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
-    opt_param.densification_interval=64 # 进行增删片元的间隔
-    opt_param.densify_from_iter=384
+    opt_param.densification_interval=100 # 进行增删片元的间隔
+    opt_param.densify_from_iter=400
     opt_param.densify_grad_threshold=5e-3
     # opt_param.position_lr_init=0.00032
     gaussians.training_setup(opt_param) # 设置优化模式
@@ -88,7 +88,8 @@ def run_training(args):
     for itr in range(1,args.num_itrs):
         gaussians.update_learning_rate(itr) # 更新学习率
 
-        loss=0
+        l1=0
+        lregular=0
         for iii in range(4*4):
             try:
                 data = next(train_itr)
@@ -108,18 +109,19 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size)
+            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
             hist_max=torch.max(hist)
             print(hist_max)
-            loss+=torch.mean((hist-gt_hist).abs())
-            
+            l1+=torch.mean((hist-gt_hist).abs())
+        
+        loss=l1
         loss.backward()
         loss_list.append(loss.item()) 
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
-        if itr%64==0:
+        if itr%50==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
         with torch.no_grad():

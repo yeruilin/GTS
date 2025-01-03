@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('error')
 
 class ConfocalDataset(Dataset):
-    def __init__(self, data_path,z=0.0,device="cuda"):
+    def __init__(self, data_path,z=0.0,is_train=False,device="cuda"):
         try:
             data_dict=loadmat(data_path)
             self.bin_resolution=data_dict["bin_resolution"]
@@ -26,11 +26,18 @@ class ConfocalDataset(Dataset):
             self.step=self.width/(self.N-1)
             self.device=device
             self.z=z
-
-            # 数据归一化
-            self.data=self.data/np.max(self.data)
+            self.train=is_train
 
             self.data=torch.from_numpy(self.data).to(self.device)
+
+            # 将深度衰减补上
+            if self.train:
+                grid_z=torch.linspace(0,1,self.M,dtype=torch.float32,device=self.device)*self.bin_resolution
+                grid_z=grid_z.view(1,1,-1)
+                self.data=self.data*(grid_z**2)
+            
+            # 数据归一化
+            self.data=self.data/torch.max(self.data)
 
         except  Exception as e:
             print("no such file!")
@@ -41,7 +48,7 @@ class ConfocalDataset(Dataset):
         
     def __getitem__(self, i):
         ii,jj=divmod(i, self.N)
-        scan_point=(self.width/2-self.step*ii,self.width/2-self.step*jj,self.z)
+        scan_point=(-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)
         hist=self.data[ii,jj,:].reshape(-1)
         return {"hist":hist,"point":scan_point}
 
