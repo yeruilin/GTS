@@ -118,7 +118,6 @@ class Gaussians:
 
         # 优化相关
         self.optimizer_type = "default"
-        self.max_radii2D = torch.zeros((self.means.shape[0]), device=self.device)
         self.xyz_gradient_accum = torch.empty(0) # training_setup函数中初始化
         self.denom = torch.empty(0)
         self.optimizer = None
@@ -126,10 +125,6 @@ class Gaussians:
         self.spatial_lr_scale = 1.0 # 和空间大小有关的参数
 
         self.sphere=False # 是否使用球谐函数
-        # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
-        if data.get("spherical_harmonics") is not None:
-            self.spherical_harmonics = data["spherical_harmonics"]
-            self.sphere=True
 
         if self.device!="cpu":
             self.to_cuda()
@@ -148,13 +143,9 @@ class Gaussians:
         data["pre_act_opacities"] = torch.tensor(ply_gaussians["opacity"]).squeeze()
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
 
-        # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
-        data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
-
         is_isotropic = False
         if data["pre_act_scales"].shape[1] != 3:
             is_isotropic=True
-            # raise NotImplementedError("Currently does not support isotropic")
 
         return data, is_isotropic
 
@@ -206,7 +197,7 @@ class Gaussians:
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = -3.6 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
+        data["pre_act_opacities"] = -2.5 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
         data["colours"] = torch.rand((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
@@ -483,7 +474,6 @@ class Gaussians:
         l = [
             {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
             {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
-            # {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
             {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self.pre_act_scales], 'lr': training_args.scaling_lr, "name": "scaling"},
             {'params': [self.pre_act_quats], 'lr': training_args.rotation_lr, "name": "rotation"}
@@ -541,8 +531,6 @@ class Gaussians:
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
 
         self.denom = self.denom[valid_points_mask]
-        self.max_radii2D = self.max_radii2D[valid_points_mask]
-        self.tmp_radii = self.tmp_radii[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
@@ -565,7 +553,7 @@ class Gaussians:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_colours, new_opacities, new_scaling, new_rotation, new_tmp_radii):
+    def densification_postfix(self, new_xyz, new_colours, new_opacities, new_scaling, new_rotation):
         d = {"xyz": new_xyz,
         "colours": new_colours,
         "opacity": new_opacities,
@@ -581,10 +569,8 @@ class Gaussians:
         self.pre_act_scales = optimizable_tensors["scaling"]
         self.pre_act_quats = optimizable_tensors["rotation"]
 
-        self.tmp_radii = torch.cat((self.tmp_radii, new_tmp_radii))
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
-        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device=self.device)
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, copy_num=2):
         # print(grads.shape) # [N,1]
@@ -603,7 +589,6 @@ class Gaussians:
         stds = self.get_scaling[selected_pts_mask].repeat(copy_num,1)
         means =torch.zeros((stds.size(0), 3),device=self.device)
         samples = torch.normal(mean=means, std=stds)
-        # rots = build_rotation(self.pre_act_quats[selected_pts_mask]).repeat(copy_num,1,1)
         rots=quaternion_to_matrix(self.pre_act_quats[selected_pts_mask].view(-1,4)).repeat(copy_num,1,1)
         # 拷贝后片元中心略有平移
         new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(copy_num, 1)
@@ -612,12 +597,10 @@ class Gaussians:
         # 拷贝后旋转、颜色、透明度不变
         new_rotation = self.pre_act_quats[selected_pts_mask].repeat(copy_num,1)
         new_colours = self.colours[selected_pts_mask].repeat(copy_num,1)
-        # new_features_rest = self._features_rest[selected_pts_mask].repeat(copy_num,1,1)
         new_opacity = self.pre_act_opacities[selected_pts_mask].repeat(copy_num)
-        new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(copy_num)
 
         # 将新的split产生的tensor和之前的tensor合并到一起
-        self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling, new_rotation, new_tmp_radii)
+        self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling, new_rotation)
         # 再把分裂前的tensor删除掉
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(copy_num * selected_pts_mask.sum(), device=self.device, dtype=bool)))
         self.prune_points(prune_filter)
@@ -635,16 +618,12 @@ class Gaussians:
         new_scaling = self.pre_act_scales[selected_pts_mask]
         new_rotation = self.pre_act_quats[selected_pts_mask]
 
-        new_tmp_radii = self.tmp_radii[selected_pts_mask]
+        self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling, new_rotation)
 
-        self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling, new_rotation, new_tmp_radii)
-
-    def densify_and_prune(self, grad_threshold, min_opacity, extent, max_screen_size, radii):
+    def densify_and_prune(self, grad_threshold, min_opacity, extent):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
         print(torch.max(grads),torch.mean(grads))
-
-        self.tmp_radii = radii
 
         # 按照位置梯度在增加点云密度
         self.densify_and_clone(grads, grad_threshold, extent)
@@ -663,8 +642,8 @@ class Gaussians:
         print("Prune number:",torch.sum(prune_mask).item())
         self.prune_points(prune_mask)
 
-        tmp_radii = self.tmp_radii
-        self.tmp_radii = None
+        # tmp_radii = self.tmp_radii
+        # self.tmp_radii = None
 
         torch.cuda.empty_cache()
 
@@ -855,8 +834,7 @@ class Scene:
         self, camera, means_3D: torch.tensor, z_vals: torch.Tensor,
         quats: torch.Tensor, scales: torch.Tensor, colours: torch.Tensor,
         opacities: torch.Tensor, img_size: Tuple = (256, 256),
-        start_transmittance: Optional[torch.Tensor] = None,
-        no_grad=False
+        start_transmittance: Optional[torch.Tensor] = None
     ):
         """
         Given N ordered (depth-sorted) 3D Gaussians (or equivalently in our case,
@@ -897,20 +875,20 @@ class Scene:
         ### YOUR CODE HERE ###
         # HINT: Can you find a function in this file that can help?
         means_2D = Gaussians.compute_means_2D(means_3D,camera)  # (N, 2)
-        if not no_grad:
-            means_2D.retain_grad()
+        # if not no_grad:
+        #     means_2D.retain_grad()
 
         ### YOUR CODE HERE ###
         # HINT: Can you find a function in this file that can help?
         cov_2D = self.gaussians.compute_cov_2D(means_3D,quats,scales,camera,img_size)  # (N, 2, 2)
 
-        # 计算每个片元投影后在图片上的半径（2*2协方差矩阵的特征值）
-        mid = 0.5*(cov_2D[:,0,0] + cov_2D[:,1,1])
-        det = cov_2D[:,0,0] * cov_2D[:,1,1] - cov_2D[:,1,0]*cov_2D[:,0,1]
-        temp=torch.Tensor([0.1]).to(det.device)
-        lambda1 = mid + torch.sqrt(torch.max(temp, mid * mid - det))
-        lambda2 = mid - torch.sqrt(torch.max(temp, mid * mid - det))
-        radii = torch.ceil(3.0* torch.sqrt(torch.max(lambda1, lambda2))) # (N,1)
+        # # 计算每个片元投影后在图片上的半径（2*2协方差矩阵的特征值）
+        # mid = 0.5*(cov_2D[:,0,0] + cov_2D[:,1,1])
+        # det = cov_2D[:,0,0] * cov_2D[:,1,1] - cov_2D[:,1,0]*cov_2D[:,0,1]
+        # temp=torch.Tensor([0.1]).to(det.device)
+        # lambda1 = mid + torch.sqrt(torch.max(temp, mid * mid - det))
+        # lambda2 = mid - torch.sqrt(torch.max(temp, mid * mid - det))
+        # radii = torch.ceil(3.0* torch.sqrt(torch.max(lambda1, lambda2))) # (N,1)
 
         # Step 2: Compute alpha maps for each gaussian
 
@@ -944,16 +922,13 @@ class Scene:
 
         ### YOUR CODE HERE ###
         # HINT: Can you implement an equation inspired by the equation for colour?
-        mask = torch.sum(alphas*transmittance,dim=0)  # (H, W, 1)
+        # mask = torch.sum(alphas*transmittance,dim=0)  # (H, W, 1)
 
         final_transmittance = transmittance[-1, ..., 0].unsqueeze(0)  # (1, H, W)
-        return image, depth, mask, final_transmittance,means_2D,radii
+        return image, depth, final_transmittance
 
     def render(
-        self, camera,
-        per_splat: int = -1, img_size: Tuple = (256, 256),
-        bg_colour: Tuple = (0.0, 0.0, 0.0),
-        no_grad=False
+        self, camera,per_splat: int = -1, img_size: Tuple = (256, 256)
     ):
         """
         Given a scene represented by N 3D Gaussians, this function renders the RGB
@@ -970,18 +945,11 @@ class Scene:
                             if more gaussians are splat per function call, but at the cost of higher GPU
                             memory consumption.
             img_size    :   The (width, height) of the image to be rendered.
-            bg_color    :   A tuple indicating the RGB colour that the background should have.
 
         Returns:
             image       :   A torch.Tensor of shape (H, W, 3) with the rendered RGB colour image.
             depth       :   A torch.Tensor of shape (H, W, 1) with the rendered depth map.
-            mask        :   A torch.Tensor of shape (H, W, 1) with the rendered silhouette map.
         """
-        if self.gaussians.colour_dim==1:
-            bg_colour=bg_colour[0:1]
-        bg_colour_ = torch.tensor(bg_colour)[None, None, :]  # (1, 1, 3)
-        bg_colour_ = bg_colour_.to(self.device)
-
         # Globally sort gaussians according to their depth value
         z_vals = self.compute_depth_values(camera)
         idxs = self.get_idxs_to_filter_and_sort(z_vals)
@@ -1011,9 +979,9 @@ class Scene:
         if num_mini_batches == 1:
 
             # Get image, depth and mask via splatting
-            image, depth, mask, _,means_2D,radii = self.splat(
+            image, depth,  _= self.splat(
                 camera, means_3D, z_vals, quats, scales,
-                colours, opacities, img_size,no_grad=no_grad
+                colours, opacities, img_size
             )
 
         # In this case we splat per_splat number of gaussians per iteration. This makes
@@ -1025,9 +993,6 @@ class Scene:
             start_transmittance = torch.ones((1, H, W), dtype=torch.float32).to(D)
             image = torch.zeros((H, W, self.gaussians.colour_dim), dtype=torch.float32).to(D)
             depth = torch.zeros((H, W, 1), dtype=torch.float32).to(D)
-            mask = torch.zeros((H, W, 1), dtype=torch.float32).to(D)
-            radii=torch.zeros((len(means_3D), 1), dtype=torch.float32).to(D)
-            means_2D_list=[]
 
             # 每次计算一部分片元的颜色，最后叠加起来得到总的结果
             for b_idx in range(num_mini_batches):
@@ -1040,22 +1005,15 @@ class Scene:
                 opacities_ = opacities[b_idx * per_splat: (b_idx+1) * per_splat]
 
                 # Get image, depth and mask via splatting
-                image_, depth_, mask_, start_transmittance,means_2D_,radii_ = self.splat(
+                image_, depth_, start_transmittance= self.splat(
                     camera, means_3D_, z_vals_, quats_, scales_, colours_,
-                    opacities_, img_size, start_transmittance,no_grad=no_grad
+                    opacities_, img_size, start_transmittance
                 ) # 这里means_2D没有累加，此模式运行有问题，必须一次全导入
 
                 image = image + image_
                 depth = depth + depth_
-                mask = mask + mask_
-                radii[b_idx * per_splat: (b_idx+1) * per_splat]=radii_[:,None]
-                means_2D_list.append(means_2D_)
 
-            means_2D=torch.cat(means_2D_list,dim=0)
-
-        # image = mask * image + (1.0 - mask) * bg_colour_
-
-        return image, depth, mask,means_2D,radii
+        return image, depth
 
     def calculate_gaussian_directions(self, means_3D, camera):
         """
@@ -1081,15 +1039,11 @@ class Scene:
 
     def render_conf_hist(
         self, camera,bin_resolution,num_bins,
-        per_splat: int = -1, img_size: Tuple = (128, 128),
-        bg_colour: Tuple = (0.0, 0.0, 0.0),
-        no_grad=False
+        per_splat: int = -1, img_size: Tuple = (128, 128)
     ):
-        intensity, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
+        intensity, depth=self.render(camera,per_splat,img_size)
         if intensity.shape[-1]==3:
             intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
-        
-        # select_mask = torch.where(mask > 0.5, True, False) # [H,W]
 
         select_mask = torch.where(depth > 0.1, True, False) # 深度阈值应该可以调整
         hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
@@ -1105,13 +1059,12 @@ class Scene:
 
         # with torch.no_grad():
         #     img = intensity.detach().cpu().numpy()
-        #     mask = mask.detach().cpu().numpy()
         #     depth = depth.detach().cpu().numpy()
         #     depth = depth[:, :, 0].astype(np.float32)
         #     histtt=hist.detach().cpu().numpy()
-        #     scipy.io.savemat("temp/depth.mat",{"img":img,"mask":mask,"depth":depth,"hist":histtt})
+        #     scipy.io.savemat("temp/depth.mat",{"img":img,"depth":depth,"hist":histtt})
         #     exit()
-        return hist,radii
+        return hist
 
     def render_nonconf_hist(
         self, camera,
@@ -1121,7 +1074,7 @@ class Scene:
         bg_colour: Tuple = (0.0, 0.0, 0.0),
         no_grad=False
     ):
-        intensity, depth, mask,means_2D,radii=self.render(camera,per_splat,img_size,bg_colour,no_grad)
+        intensity, depth=self.render(camera,per_splat,img_size,bg_colour,no_grad)
         if intensity.shape[-1]==3:
             intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
         
@@ -1147,4 +1100,4 @@ class Scene:
         hist.scatter_add_(0, indices, hist_inten.flatten())
         hist=torch.clamp(hist,0)
 
-        return hist,means_2D,radii
+        return hist

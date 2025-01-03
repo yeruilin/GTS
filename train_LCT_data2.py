@@ -11,10 +11,11 @@ from torch.utils.data import DataLoader
 from data_utils import save_ply,OptimizationParams
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
-from dataset import LCTDataset
+from dataset import LCTDataset,ConfocalDataset
 import time
 import math
 import scipy
+import matplotlib.pyplot as plt
 
 def make_trainable(gaussians):
 
@@ -33,7 +34,7 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    dataset= LCTDataset(args.data_path,device=args.device)
+    dataset= ConfocalDataset(args.data_path,device=args.device)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -73,32 +74,29 @@ def run_training(args):
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
-    opt_param.densification_interval=100 # 进行增删片元的间隔
-    opt_param.densify_from_iter=600
-    opt_param.densify_grad_threshold=5e-4
+    opt_param.densification_interval=64 # 进行增删片元的间隔
+    opt_param.densify_from_iter=384
+    opt_param.densify_grad_threshold=5e-3
     # opt_param.position_lr_init=0.00032
     gaussians.training_setup(opt_param) # 设置优化模式
 
-    bg_colour=(0.0,0.0,0.0) # 白色背景
+    loss_list=[]
 
     start=time.time()
 
     # Training loop
     for itr in range(1,args.num_itrs):
-
-        # Fetching data
-        try:
-            data = next(train_itr)
-        except StopIteration:
-            train_itr = iter(train_loader)
-            data = next(train_itr)
-        
         gaussians.update_learning_rate(itr) # 更新学习率
-        
-        gt_hist=data["hist"]
-        hist_list=[]
 
-        for scan_point in data["point"]:
+        loss=0
+        for iii in range(4*4):
+            try:
+                data = next(train_itr)
+            except StopIteration:
+                train_itr = iter(train_loader)
+                data = next(train_itr)
+            scan_point=data["point"]
+            gt_hist=data["hist"]
             dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
             fov=2*math.asin(radius/dist)
             R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
@@ -110,25 +108,23 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist_,radii= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
-                                            args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
+            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size)
 
-            hist_list.append(hist_.unsqueeze(0))
-
-            hist_max=torch.max(hist_)
+            hist_max=torch.max(hist)
             print(hist_max)
-
-        hist=torch.cat(hist_list,dim=0)
-        loss=torch.mean((hist-gt_hist).abs())
+            loss+=torch.mean((hist-gt_hist).abs())
+            
         loss.backward()
+        loss_list.append(loss.item()) 
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
+
+        if itr%64==0:
+            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
         with torch.no_grad():
             # 统计梯度
             if itr > opt_param.densify_from_iter:
-                # # 记录每个片元在图像上最大的半径
-                # gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 # 记录每个片元在图像上半径的梯度
                 visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
                 gaussians.add_densification_stats(gaussians.means, visibility_filter)
@@ -136,13 +132,10 @@ def run_training(args):
             # 一段时间要增加或删减高斯片元
             if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
                 print("densify_and_prune")
-                size_threshold = 10 if itr > opt_param.opacity_reset_interval else None # 片元在图片上的大小不超过20
                 gaussians.densify_and_prune(
                     grad_threshold=opt_param.densify_grad_threshold, 
-                    min_opacity=0.025, 
-                    extent=radius, 
-                    max_screen_size=size_threshold, 
-                    radii=radii
+                    min_opacity=0.005, 
+                    extent=radius
                 )
                 save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -155,14 +148,15 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
 
-        if itr%64==0:
-            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-
     end=time.time()
     print("Training Completed. Training time:", end-start)
     # Saving Gaussian primitives (.ply)
     save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
     print("Save ply!")
+
+    plt.plot(loss_list)
+    plt.savefig("temp/loss_figure.png")
+    print("Save loss figure!")
 
 def get_args():
 

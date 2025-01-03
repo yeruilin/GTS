@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from data_utils import save_ply,OptimizationParams
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
-from dataset import LCTDataset
+from dataset import LCTDataset,ConfocalDataset
 import time
 import math
 import scipy
@@ -35,7 +35,7 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    dataset= LCTDataset(args.data_path,device=args.device)
+    dataset= ConfocalDataset(args.data_path,device=args.device)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -70,28 +70,23 @@ def run_training(args):
     # opt_param.position_lr_final = 0.0001
     gaussians.training_setup(opt_param) # 设置优化模式
 
-    bg_colour=(0.0,0.0,0.0) # 白色背景
-
     start=time.time()
 
     loss_list=[]
 
     # Training loop
     for itr in range(1,args.num_itrs):
-
-        # Fetching data
-        try:
-            data = next(train_itr)
-        except StopIteration:
-            train_itr = iter(train_loader)
-            data = next(train_itr)
-        
         gaussians.update_learning_rate(itr) # 更新学习率
-        
-        gt_hist=data["hist"]
-        hist_list=[]
 
-        for scan_point in data["point"]:
+        loss=0
+        for iii in range(4*4):
+            try:
+                data = next(train_itr)
+            except StopIteration:
+                train_itr = iter(train_loader)
+                data = next(train_itr)
+            scan_point=data["point"]
+            gt_hist=data["hist"]
             dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
             fov=2*math.asin(radius/dist)
             R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
@@ -103,20 +98,12 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist_,_ = scene.render_conf_hist(current_camera,bin_resolution,nums_bin,
-                                            args.gaussians_per_splat,img_size,bg_colour,no_grad=False)
+            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size)
 
-            hist_list.append(hist_.unsqueeze(0))
-
-            hist_max=torch.max(hist_)
+            hist_max=torch.max(hist)
             print(hist_max)
-
-        hist=torch.cat(hist_list,dim=0)
-        # print(hist.shape) # [16,512]
-        # print(gt_hist.shape) # [16,512]
-        loss=torch.mean((hist-gt_hist).abs())
-        # ssimloss=1-ssim(hist.unsqueeze(0).unsqueeze(0),gt_hist.unsqueeze(0)) # SSIM会大大降低收敛速度
-        # loss=0.9*L1loss+0.1*ssimloss
+            loss+=torch.mean((hist-gt_hist).abs())
+            
         loss.backward()
         loss_list.append(loss.item()) 
 
