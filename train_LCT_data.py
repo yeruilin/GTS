@@ -103,9 +103,9 @@ def run_training(args):
             hist_max=torch.max(hist)
             print(hist_max)
             if itr<250:
-                l1+=torch.mean((hist-gt_hist).abs())
+                loss+=torch.mean((hist-gt_hist).abs())
             else:
-                l1+=wasserstein_distance(hist,gt_hist)
+                loss+=wasserstein_distance(hist,gt_hist)
             
         loss.backward()
         loss_list.append(loss.item()) 
@@ -117,8 +117,9 @@ def run_training(args):
 
         print(f"[*] Itr: {itr:07d} | Loss: {loss:0.4f}")
 
-        if itr%64==0:
+        if itr%50==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
 
     end=time.time()
     print("Training Completed. Training time:", end-start)

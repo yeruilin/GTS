@@ -4,6 +4,9 @@
 
 tic;
 sig=double(data);
+% 为了降低噪声的影响，可以先将没有物体的深度设置为0，尤其是深度大的位置，不然乘以grid^2之后会严重畸变
+% plot(squeeze(sum(sum(data,1),2))); % 查看深度分布
+% data=data(:,:,start_index:end_index); %选出中间有目标的一部分即可
 % width=2.5;
 half_width=width/2;
 % Confocal Non-Light-of-Sight (C-NLOS) reconstruction procedure for paper
