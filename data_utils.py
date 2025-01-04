@@ -40,6 +40,24 @@ class OptimizationParams:
         self.random_background = False
         self.optimizer_type = "default"
 
+def wasserstein_distance(p, gt):
+    """
+    计算一维离散分布 p 和 q 的 Wasserstein 距离
+    Args:
+        p (torch.Tensor): 第一个分布，形状为 [N]
+        gt (torch.Tensor): 第二个分布，形状为 [N]
+    Returns:
+        float: Wasserstein 距离
+    """
+
+    # 计算 Wasserstein 距离
+    cdf_p = torch.cumsum(p.flatten(), dim=0)  # 累积分布函数 (CDF)
+    cdf_q = torch.cumsum(gt.flatten(), dim=0)
+
+    wasserstein_dist = torch.mean(torch.abs(cdf_p - cdf_q))#/torch.sum(gt)
+
+    return wasserstein_dist
+
 class CowDataset(Dataset):
 
     def __init__(self, root, split):

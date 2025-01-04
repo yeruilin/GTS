@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams
+from data_utils import save_ply,OptimizationParams,wasserstein_distance
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
 from dataset import LCTDataset,ConfocalDataset
@@ -102,7 +102,10 @@ def run_training(args):
 
             hist_max=torch.max(hist)
             print(hist_max)
-            loss+=torch.mean((hist-gt_hist).abs()) # MSE的效果不好，初始梯度太大，容易畸变
+            if itr<250:
+                l1+=torch.mean((hist-gt_hist).abs())
+            else:
+                l1+=wasserstein_distance(hist,gt_hist)
             
         loss.backward()
         loss_list.append(loss.item()) 

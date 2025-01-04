@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams
+from data_utils import save_ply,OptimizationParams,wasserstein_distance
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
 from dataset import LCTDataset,ConfocalDataset
@@ -66,6 +66,8 @@ def run_training(args):
 
     print("radius:",radius)
     print("center:",object_center)
+    print("bin resolution:",bin_resolution)
+    print("width:",dataset.width)
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -76,7 +78,7 @@ def run_training(args):
     opt_param=OptimizationParams() # 设置优化参数
     opt_param.densification_interval=100 # 进行增删片元的间隔
     opt_param.densify_from_iter=400
-    opt_param.densify_grad_threshold=5e-3
+    opt_param.densify_grad_threshold=8e-3
     # opt_param.position_lr_init=0.00032
     gaussians.training_setup(opt_param) # 设置优化模式
 
@@ -90,7 +92,7 @@ def run_training(args):
 
         l1=0
         lregular=0
-        for iii in range(4*4):
+        for iii in range(16):
             try:
                 data = next(train_itr)
             except StopIteration:
@@ -113,7 +115,10 @@ def run_training(args):
 
             hist_max=torch.max(hist)
             print(hist_max)
-            l1+=torch.mean((hist-gt_hist).abs())
+            if itr<250:
+                l1+=torch.mean((hist-gt_hist).abs())
+            else:
+                l1+=wasserstein_distance(hist,gt_hist)
         
         loss=l1
         loss.backward()
@@ -123,6 +128,7 @@ def run_training(args):
 
         if itr%50==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
 
         with torch.no_grad():
             # 统计梯度
@@ -141,7 +147,7 @@ def run_training(args):
                 )
                 save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
-            # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
+            ### 一段时间要重置一次透明度，这样可以消除floaters悬浮物
             # # if itr % opt_param.opacity_reset_interval == 0 or (itr == opt_param.densify_from_iter):
             #     print("reset_opacity")
             #     gaussians.reset_opacity(opacity_thresh=0.025)

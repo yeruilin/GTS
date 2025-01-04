@@ -16,9 +16,11 @@ class ConfocalDataset(Dataset):
             self.bin_resolution=data_dict["bin_resolution"]
             if type(self.bin_resolution)!=float:
                 self.bin_resolution=self.bin_resolution[0][0]
+            if self.bin_resolution<1e-9:
+                self.bin_resolution=self.bin_resolution*3e8
             self.width=data_dict["width"]
             if type(self.width)!=float:
-                self.width=self.width[0][0]
+                self.width=self.width[0][0]+0.0
             
             self.data=data_dict["data"] # [N,N,M]
             self.N=self.data.shape[0]
@@ -32,7 +34,7 @@ class ConfocalDataset(Dataset):
 
             # 将深度衰减补上
             if self.train:
-                grid_z=torch.linspace(0,1,self.M,dtype=torch.float32,device=self.device)*self.bin_resolution
+                grid_z=torch.linspace(0,self.M,self.M,dtype=torch.float32,device=self.device)*self.bin_resolution
                 grid_z=grid_z.view(1,1,-1)
                 self.data=self.data*(grid_z**2)
             
