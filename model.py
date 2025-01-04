@@ -679,6 +679,11 @@ class Gaussians:
         opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*opacity_thresh))
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self.pre_act_opacities = optimizable_tensors["opacity"]
+    
+    def reset_colours(self,colour_thresh=1e-2):
+        colours_new = torch.ones_like(self.get_colour)*colour_thresh
+        optimizable_tensors = self.replace_tensor_to_optimizer(colours_new, "colours")
+        self.colours = optimizable_tensors["colours"]
 
 class Scene:
 

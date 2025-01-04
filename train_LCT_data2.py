@@ -77,8 +77,8 @@ def run_training(args):
     make_trainable(gaussians)
     opt_param=OptimizationParams() # 设置优化参数
     opt_param.densification_interval=100 # 进行增删片元的间隔
-    opt_param.densify_from_iter=400
-    opt_param.densify_grad_threshold=8e-3
+    opt_param.densify_from_iter=300
+    opt_param.densify_grad_threshold=1 # cow的阈值为1，mannequin为10
     # opt_param.position_lr_init=0.00032
     gaussians.training_setup(opt_param) # 设置优化模式
 
@@ -115,7 +115,7 @@ def run_training(args):
 
             hist_max=torch.max(hist)
             print(hist_max)
-            if itr<250:
+            if itr<200:
                 l1+=torch.mean((hist-gt_hist).abs())
             else:
                 l1+=wasserstein_distance(hist,gt_hist)

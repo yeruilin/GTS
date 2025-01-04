@@ -102,7 +102,7 @@ def run_training(args):
 
             hist_max=torch.max(hist)
             print(hist_max)
-            if itr<250:
+            if itr<200:
                 loss+=torch.mean((hist-gt_hist).abs())
             else:
                 loss+=wasserstein_distance(hist,gt_hist)

@@ -150,8 +150,8 @@ def run_training(args):
 
     opt_param=OptimizationParams()
     opt_param.densification_interval=100 # 进行增删片元的间隔
-    opt_param.densify_from_iter=400
-    opt_param.densify_grad_threshold=5e-3
+    opt_param.densify_from_iter=200
+    opt_param.densify_grad_threshold=0.25
     # opt_param.position_lr_init=5e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
@@ -167,7 +167,9 @@ def run_training(args):
         gaussians.update_learning_rate(itr) # 更新学习率
 
         loss=0
-        for iii in range(4*4):
+        sample_num=16
+
+        for iii in range(sample_num):
             try:
                 data = next(train_itr)
             except StopIteration:
@@ -189,12 +191,13 @@ def run_training(args):
             hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
             hist_max=torch.max(hist)
-            print(hist_max)
+            # print(hist_max)
             if itr<200:
                 loss+=torch.mean((hist-gt_hist).abs()) # 降数值对齐
             else:
                 loss+=wasserstein_distance(hist,gt_hist)
-            
+        
+        loss=loss/sample_num
         loss.backward()
         loss_list.append(loss.item())
 
@@ -205,25 +208,26 @@ def run_training(args):
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
         with torch.no_grad():
-            # # 统计梯度
-            # if itr > opt_param.densify_from_iter:
-            #     visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
-            #     gaussians.add_densification_stats(gaussians.means, visibility_filter)
+            # 统计梯度
+            if itr > opt_param.densify_from_iter:
+                visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
+                gaussians.add_densification_stats(gaussians.means, visibility_filter)
                 
-            # # 一段时间要增加或删减高斯片元
-            # if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
-            #     print("densify_and_prune")
-            #     gaussians.densify_and_prune(
-            #         grad_threshold=opt_param.densify_grad_threshold, 
-            #         min_opacity=0.025, 
-            #         extent=radius
-            #     )
-            #     save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            # 一段时间要增加或删减高斯片元
+            if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
+                print("densify_and_prune")
+                gaussians.densify_and_prune(
+                    grad_threshold=opt_param.densify_grad_threshold, 
+                    min_opacity=0.025, 
+                    extent=radius
+                )
+                save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
-            # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-            # # if itr % opt_param.opacity_reset_interval == 0 or (itr == opt_param.densify_from_iter):
-            #     print("reset_opacity")
-            #     gaussians.reset_opacity(opacity_thresh=0.025)
+            # # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
+            # if itr % 1000 == 0 or (itr == opt_param.densify_from_iter):
+            #     print("reset_colours")
+            #     # gaussians.reset_colours()
+            #     gaussians.reset_opacity(0.025) # 效果不好！
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
