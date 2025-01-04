@@ -53,7 +53,7 @@ class Gaussians:
     def __init__(
         self, init_type: str, device: str, load_path: Optional[str] = None,
         num_points: Optional[int] = None, isotropic: Optional[bool] = None,
-        colour_dim=3,extent=1.0
+        colour_dim=3,extent=1.0,center=(0,0,0)
     ):
 
         self.device = device
@@ -104,7 +104,7 @@ class Gaussians:
             else:
                 self.is_isotropic = isotropic
 
-            data = self._load_random(num_points,extent)
+            data = self._load_random(num_points,extent,center)
 
         else:
             raise ValueError(f"Invalid init_type: {init_type}")
@@ -192,17 +192,20 @@ class Gaussians:
 
         return data
 
-    def _load_random(self, num_points: int,extent=1.0):
+    def _load_random(self, num_points: int,radius=1.0,center=(0,0,0)):
 
         data = dict()
 
         # Initializing means randomly
+        self.center=torch.Tensor(center)
+        self.radius=radius
         means_=torch.rand((num_points, 3), dtype=torch.float32) # (N, 3)
-        data["means"] = extent*(means_-0.5)*2
+        data["means"] = radius*(means_-0.5)*2
+        data["means"]+=self.center.view(1,3)
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
         # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = -2.5 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
+        data["pre_act_opacities"] = 8.0 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
         data["colours"] = torch.rand((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)

@@ -52,11 +52,8 @@ def run_training(args):
     gaussians = Gaussians(
         num_points=1000, init_type="random",
         device=args.device, isotropic=True,
-        colour_dim=1,extent=radius
+        colour_dim=1,extent=radius,center=object_center
     )
-
-    print("radius:",radius)
-    print("center:",object_center)
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -155,7 +152,7 @@ def run_training(args):
     opt_param.densification_interval=100 # 进行增删片元的间隔
     opt_param.densify_from_iter=400
     opt_param.densify_grad_threshold=5e-3
-    opt_param.position_lr_init=5e-3
+    # opt_param.position_lr_init=5e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
     loss_list=[]
@@ -193,8 +190,10 @@ def run_training(args):
 
             hist_max=torch.max(hist)
             print(hist_max)
-            # loss+=torch.mean((hist-gt_hist).abs())
-            loss+=wasserstein_distance(hist,gt_hist)
+            if itr<200:
+                loss+=torch.mean((hist-gt_hist).abs()) # 降数值对齐
+            else:
+                loss+=wasserstein_distance(hist,gt_hist)
             
         loss.backward()
         loss_list.append(loss.item())
