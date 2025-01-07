@@ -22,7 +22,7 @@ class OptimizationParams:
         self.position_lr_max_steps = 30000
         self.feature_lr = 0.0025
         self.opacity_lr = 0.025
-        self.scaling_lr = 0.005
+        self.scaling_lr = 0.0005
         self.rotation_lr = 0.001
         self.exposure_lr_init = 0.01
         self.exposure_lr_final = 0.001
@@ -33,14 +33,42 @@ class OptimizationParams:
         self.densification_interval = 1000 # 重置透明度之后，间隔100次重新增删片元密度
         self.opacity_reset_interval = 50 # 重置透明度的间隔
         self.densify_from_iter = 5000 # 超过这个阈值会重置一次透明度
-        self.densify_until_iter = 15_0000 # 前15000次都需要增加高斯密度
+        self.densify_until_iter = 15000 # 前15000次都需要增加高斯密度
         self.densify_grad_threshold = 0.0002
         self.depth_l1_weight_init = 1.0
         self.depth_l1_weight_final = 0.01
         self.random_background = False
         self.optimizer_type = "default"
 
-def wasserstein_distance(p, gt):
+# def wasserstein_distance(p, gt):
+#     """
+#     计算一维离散分布 p 和 q 的 Wasserstein 距离
+#     Args:
+#         p (torch.Tensor): 第一个分布，形状为 [N]
+#         gt (torch.Tensor): 第二个分布，形状为 [N]
+#     Returns:
+#         float: Wasserstein 距离
+#     """
+#     p=p.flatten()
+#     gt=gt.flatten()
+#     # 计算 Wasserstein 距离
+#     cdf_p = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
+#     cdf_q = torch.cumsum(gt, dim=0)
+
+#     wasserstein_dist1 = torch.mean(torch.abs(cdf_p - cdf_q))#/torch.sum(gt)
+
+#     # p = torch.flip(p, dims=[0])
+#     # gt = torch.flip(gt, dims=[0])
+
+#     # cdf_p2 = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
+#     # cdf_q2 = torch.cumsum(gt, dim=0)
+#     # wasserstein_dist2 = torch.mean(torch.abs(cdf_p2 - cdf_q2))
+
+#     # wasserstein_dist=(wasserstein_dist1+wasserstein_dist2)/2
+
+#     return wasserstein_dist1
+
+def wasserstein_distance(p, gt,indices=None):
     """
     计算一维离散分布 p 和 q 的 Wasserstein 距离
     Args:
@@ -49,12 +77,58 @@ def wasserstein_distance(p, gt):
     Returns:
         float: Wasserstein 距离
     """
+    p=p.flatten()
+    gt=gt.flatten()
+
+    if indices!=None:
+        p = p[indices]
+        gt=gt[indices]
 
     # 计算 Wasserstein 距离
-    cdf_p = torch.cumsum(p.flatten(), dim=0)  # 累积分布函数 (CDF)
-    cdf_q = torch.cumsum(gt.flatten(), dim=0)
+    cdf_p = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
+    cdf_q = torch.cumsum(gt, dim=0)
 
-    wasserstein_dist = torch.mean(torch.abs(cdf_p - cdf_q))#/torch.sum(gt)
+    wasserstein_dist1 = torch.mean(torch.abs(cdf_p - cdf_q))#/torch.sum(gt)
+
+    p = torch.flip(p, dims=[0])
+    gt = torch.flip(gt, dims=[0])
+
+    cdf_p2 = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
+    cdf_q2 = torch.cumsum(gt, dim=0)
+    wasserstein_dist2 = torch.mean(torch.abs(cdf_p2 - cdf_q2))
+
+    wasserstein_dist=(wasserstein_dist1+wasserstein_dist2)/2
+
+    return wasserstein_dist
+
+def wasserstein_distance2(p, gt):
+    """
+    计算一维离散分布 p 和 q 的 Wasserstein 距离
+    Args:
+        p (torch.Tensor): 第一个分布，形状为 [N]
+        gt (torch.Tensor): 第二个分布，形状为 [N]
+    Returns:
+        float: Wasserstein 距离
+    """
+    p=p.flatten()/(p.sum()+1e-5)
+    gt=gt.flatten()/gt.sum()
+
+    # 计算 Wasserstein 距离
+    cdf_p = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
+    cdf_q = torch.cumsum(gt, dim=0)
+
+    wasserstein_dist1 = torch.mean(torch.abs(cdf_p - cdf_q))#/torch.sum(gt)
+
+    p = torch.flip(p, dims=[0])
+    gt = torch.flip(gt, dims=[0])
+
+    # 计算 Wasserstein 距离
+    cdf_p2 = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
+    cdf_q2 = torch.cumsum(gt, dim=0)
+
+    wasserstein_dist2 = torch.mean(torch.abs(cdf_p2 - cdf_q2))#/torch.sum(gt)
+
+    wasserstein_dist=(wasserstein_dist1+wasserstein_dist2)/2
 
     return wasserstein_dist
 

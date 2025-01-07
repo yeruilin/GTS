@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams,wasserstein_distance
+from data_utils import save_ply,OptimizationParams,wasserstein_distance,wasserstein_distance2
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
 from dataset import LCTDataset,ConfocalDataset
@@ -32,6 +32,7 @@ def make_trainable(gaussians):
 
 ### 随机初始化训练模型
 def run_training(args):
+    torch.manual_seed(16)
 
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
@@ -47,10 +48,12 @@ def run_training(args):
     # radius=gaussians.radius.item()
 
     # # 随机初始化
-    radius=0.65
-    object_center=(0.0,0.0,1.3)
+    # radius=0.65 ## cow数据的参数
+    # object_center=(0.0,0.0,1.3)
+    radius=0.3 ## mannequin数据的参数
+    object_center=(0.0,0.0,0.6)
     gaussians = Gaussians(
-        num_points=1000, init_type="random",
+        num_points=3000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
@@ -62,82 +65,7 @@ def run_training(args):
 
     # Making gaussians trainable and setting up optimizer
     make_trainable(gaussians)
-    # opt_param=OptimizationParams() # 设置优化参数
-    # gaussians.training_setup(opt_param) # 设置优化模式
-
-    # ############################################
-    # ## 第一步：启动，用4*4子图优化，剔除掉无效片元
-    # ############################################
-    # dataset= LCTDataset(args.data_path,device=args.device,subN=4,sample_mode=1)
-    # img_size=(dataset.N,dataset.N) # 渲染图片大小
-    # bin_resolution=dataset.bin_resolution
-    # nums_bin=dataset.M
-
-    # print("bin resolution:",bin_resolution)
-    # print("width:",dataset.width)
-
-    # train_loader = DataLoader(
-    #     dataset, batch_size=1, shuffle=True
-    # )
-    # train_itr = iter(train_loader)
-
-    # # Training loop
-    # for itr in range(1,300):
-    #     try:
-    #         data = next(train_itr)
-    #     except StopIteration:
-    #         train_itr = iter(train_loader)
-    #         data = next(train_itr)
-        
-    #     gaussians.update_learning_rate(itr) # 更新学习率
-        
-    #     gt_hist=data["hist"]
-    #     hist_list=[]
-    #     for scan_point in data["point"]:
-    #         dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-    #         fov=2*math.asin(radius/dist)
-    #         R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
-    #         current_camera = FoVPerspectiveCameras(
-    #             znear=0.1,zfar=10.0,
-    #             fov=fov,degrees=False, # radian
-    #             R=R, T=T
-    #         ).to(args.device)
-    #         current_camera.image_size=(img_size,)
-
-    #         # Rendering histogram using gaussian splatting
-    #         hist_= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size)
-
-    #         hist_list.append(hist_.unsqueeze(0))
-
-    #         hist_max=torch.max(hist_)
-    #         print(hist_max)
-
-    #     hist=torch.cat(hist_list,dim=0)
-    #     loss=torch.mean((hist-gt_hist).abs())
-    #     loss.backward()
-
-    #     print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
-
-    #     with torch.no_grad():
-    #         gaussians.optimizer.step()
-    #         gaussians.optimizer.zero_grad(set_to_none = True)
-    #         print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
     
-    # # 裁剪掉透明度小的片元
-    # with torch.no_grad():
-    #     opacity_thresh=0.1
-    #     prune_mask = (gaussians.get_opacity < opacity_thresh).squeeze()
-    #     print("Prune number:",torch.sum(prune_mask).item())
-    #     gaussians.prune_points(prune_mask)
-
-    #     torch.cuda.empty_cache()
-
-    # save_ply("temp/start.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-    # print(gaussians.means.shape)
-
-    ############################################
-    ## 第二步：训练，用8*8子图优化，这里子图越大肯定越好，但计算图很耗费显存
-    ############################################
     dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True) # 连续点
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
@@ -150,9 +78,9 @@ def run_training(args):
 
     opt_param=OptimizationParams()
     opt_param.densification_interval=100 # 进行增删片元的间隔
-    opt_param.densify_from_iter=200
-    opt_param.densify_grad_threshold=0.25
-    # opt_param.position_lr_init=5e-3
+    opt_param.densify_from_iter=400
+    opt_param.densify_grad_threshold=2.5 # 0.05
+    # opt_param.position_lr_init=1.6e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
     loss_list=[]
@@ -167,7 +95,7 @@ def run_training(args):
         gaussians.update_learning_rate(itr) # 更新学习率
 
         loss=0
-        sample_num=16
+        sample_num=1
 
         for iii in range(sample_num):
             try:
@@ -194,40 +122,47 @@ def run_training(args):
             # print(hist_max)
             if itr<200:
                 loss+=torch.mean((hist-gt_hist).abs()) # 降数值对齐
+            # elif itr>=200 and itr<opt_param.densify_from_iter:
+            #     loss+=wasserstein_distance(hist,gt_hist)
+            # else:
+            #     loss+=wasserstein_distance2(hist,gt_hist)
             else:
-                loss+=wasserstein_distance(hist,gt_hist)
+                indices = torch.randperm(dataset.M)
+                # loss+=(wasserstein_distance(hist,gt_hist)+wasserstein_distance(hist,gt_hist,indices))/2
+                loss+=wasserstein_distance(hist,gt_hist,indices)
         
         loss=loss/sample_num
         loss.backward()
         loss_list.append(loss.item())
 
         if itr%50==0:
-            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            # save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
             scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
         with torch.no_grad():
-            # 统计梯度
-            if itr > opt_param.densify_from_iter:
-                visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
-                gaussians.add_densification_stats(gaussians.means, visibility_filter)
-                
-            # 一段时间要增加或删减高斯片元
-            if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
-                print("densify_and_prune")
-                gaussians.densify_and_prune(
-                    grad_threshold=opt_param.densify_grad_threshold, 
-                    min_opacity=0.025, 
-                    extent=radius
-                )
-                save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            if loss.item()>0.4:
+                # 统计梯度
+                if itr > opt_param.densify_from_iter:
+                    visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
+                    gaussians.add_densification_stats(gaussians.means, visibility_filter)
+                    
+                # 一段时间要增加或删减高斯片元
+                if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
+                    print("densify_and_prune")
+                    gaussians.densify_and_prune(
+                        grad_threshold=opt_param.densify_grad_threshold, 
+                        min_opacity=0.1, 
+                        extent=radius
+                    )
+                    # save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
-            # # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-            # if itr % 1000 == 0 or (itr == opt_param.densify_from_iter):
-            #     print("reset_colours")
-            #     # gaussians.reset_colours()
-            #     gaussians.reset_opacity(0.025) # 效果不好！
+                # # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
+                # if itr % 1000 == 0 or (itr == opt_param.densify_from_iter):
+                #     print("reset_colours")
+                #     # gaussians.reset_colours()
+                #     gaussians.reset_opacity(0.025) # 效果不好！
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)

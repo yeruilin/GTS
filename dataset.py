@@ -50,6 +50,7 @@ class ConfocalDataset(Dataset):
         
     def __getitem__(self, i):
         ii,jj=divmod(i, self.N)
+        ii,jj=self.N//2,self.N//2
         scan_point=(-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)
         hist=self.data[ii,jj,:].reshape(-1)
         return {"hist":hist,"point":scan_point}
