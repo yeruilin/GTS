@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams,wasserstein_distance,wasserstein_distance2
+from data_utils import save_ply,OptimizationParams,wasserstein_distance,TVLoss
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
 from dataset import LCTDataset,ConfocalDataset
@@ -62,11 +62,8 @@ def run_training(args):
 
     scene = Scene(gaussians)
     start=time.time()
-
-    # Making gaussians trainable and setting up optimizer
-    make_trainable(gaussians)
     
-    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True) # 连续点
+    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True,start_index=200,end_index=350) # 参数是mannequin的
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -77,25 +74,62 @@ def run_training(args):
     print("width:",dataset.width)
 
     opt_param=OptimizationParams()
-    opt_param.densification_interval=100 # 进行增删片元的间隔
-    opt_param.densify_from_iter=400
-    opt_param.densify_grad_threshold=2.5 # 0.05
+    opt_param.densification_interval=50 # 进行增删片元的间隔
+    opt_param.densify_from_iter=1
+    opt_param.densify_grad_threshold=0.01 # 0.05
     # opt_param.position_lr_init=1.6e-3
     gaussians.training_setup(opt_param) # 设置优化模式
-
-    loss_list=[]
 
     train_loader = DataLoader(
         dataset, batch_size=1, shuffle=True
     )
     train_itr = iter(train_loader)
 
+    indices = torch.randperm(dataset.M)
+
+    z_mask=torch.ones((gaussians.means.shape[0],),dtype=torch.bool,device=args.device) # 设置深度过滤器
+    # 对随机初始化结果进行裁剪
+    for itr in range(200):
+        try:
+            data = next(train_itr)
+        except StopIteration:
+            train_itr = iter(train_loader)
+            data = next(train_itr)
+        scan_point=data["point"]
+        gt_hist=data["hist"]
+        z1,z2=data["z_range"]
+        z1=z1.to(args.device)
+        z2=z2.to(args.device)
+        dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
+        fov=2*math.asin(radius/dist)
+        R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
+        current_camera = FoVPerspectiveCameras(
+            znear=0.1,zfar=10.0,
+            fov=fov,degrees=False, # radian
+            R=R, T=T
+        ).to(args.device)
+        current_camera.image_size=(img_size,)
+
+        # Rendering histogram using gaussian splatting
+        hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
+        # filtering the gaussian outside the z range
+        z_mask=torch.logical_and(z_mask,torch.logical_and(z_vals<z2,z_vals>z1))
+
+    print(f"depth prune number: {torch.sum(~z_mask).item()}")
+    gaussians.prune_points(~z_mask)
+    
+    ### 开始训练
+    # Making gaussians trainable and setting up optimizer
+    make_trainable(gaussians)
+
+    loss_list=[]
+
     # Training loop
     for itr in range(1,args.num_itrs):
         gaussians.update_learning_rate(itr) # 更新学习率
 
         loss=0
-        sample_num=1
+        sample_num=16
 
         for iii in range(sample_num):
             try:
@@ -105,6 +139,9 @@ def run_training(args):
                 data = next(train_itr)
             scan_point=data["point"]
             gt_hist=data["hist"]
+            z1,z2=data["z_range"]
+            z1=z1.to(args.device)
+            z2=z2.to(args.device)
             dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
             fov=2*math.asin(radius/dist)
             R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
@@ -116,33 +153,27 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
+            hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
-            hist_max=torch.max(hist)
-            # print(hist_max)
             if True:
                 loss+=torch.mean((hist-gt_hist).abs()) # 降数值对齐
-            # elif itr>=200 and itr<opt_param.densify_from_iter:
-            #     loss+=wasserstein_distance(hist,gt_hist)
-            # else:
-            #     loss+=wasserstein_distance2(hist,gt_hist)
             else:
-                indices = torch.randperm(dataset.M)
                 # loss+=(wasserstein_distance(hist,gt_hist)+wasserstein_distance(hist,gt_hist,indices))/2
-                loss+=wasserstein_distance(hist,gt_hist,indices)
+                loss+=wasserstein_distance(hist,gt_hist)
         
         loss=loss/sample_num
         loss.backward()
         loss_list.append(loss.item())
 
         if itr%50==0:
-            # save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
             scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
 
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
         with torch.no_grad():
-            if loss.item()>0.4:
+            # 裁剪深度不在指定范围的片元
+            if True:
                 # 统计梯度
                 if itr > opt_param.densify_from_iter:
                     visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
@@ -166,7 +197,7 @@ def run_training(args):
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
-            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f}")
+            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
     end=time.time()
     print("Training Completed. Training time:", end-start)

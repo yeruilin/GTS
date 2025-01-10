@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('error')
 
 class ConfocalDataset(Dataset):
-    def __init__(self, data_path,z=0.0,is_train=False,device="cuda"):
+    def __init__(self, data_path,z=0.0,is_train=False,device="cuda",start_index=0,end_index=-1):
         try:
             data_dict=loadmat(data_path)
             self.bin_resolution=data_dict["bin_resolution"]
@@ -30,7 +30,14 @@ class ConfocalDataset(Dataset):
             self.z=z
             self.train=is_train
 
+            self.start_index=start_index
+            if end_index!=-1:
+                self.end_index=end_index
+            else:
+                self.end_index=self.M
+
             self.data=torch.from_numpy(self.data).to(self.device)
+            self.data[:,:,-1]=0
 
             # 将深度衰减补上
             if self.train:
@@ -53,7 +60,7 @@ class ConfocalDataset(Dataset):
         # ii,jj=self.N//2,self.N//2
         scan_point=(-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)
         hist=self.data[ii,jj,:].reshape(-1)
-        return {"hist":hist,"point":scan_point}
+        return {"hist":hist,"point":scan_point,"z_range":[self.start_index*self.bin_resolution/2,self.end_index*self.bin_resolution/2]}
 
 
 class LCTDataset(Dataset):

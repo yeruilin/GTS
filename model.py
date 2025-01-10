@@ -964,13 +964,13 @@ class Scene:
             depth       :   A torch.Tensor of shape (H, W, 1) with the rendered depth map.
         """
         # Globally sort gaussians according to their depth value
-        z_vals = self.compute_depth_values(camera)
-        idxs = self.get_idxs_to_filter_and_sort(z_vals)
+        z_vals_origin = self.compute_depth_values(camera) # (N,)
+        idxs = self.get_idxs_to_filter_and_sort(z_vals_origin)
 
         pre_act_quats = self.gaussians.pre_act_quats[idxs]
         pre_act_scales = self.gaussians.pre_act_scales[idxs]
         pre_act_opacities = self.gaussians.pre_act_opacities[idxs]
-        z_vals = z_vals[idxs]
+        z_vals = z_vals_origin[idxs]
         means_3D = self.gaussians.means[idxs]
 
         # For questions 1.1, 1.2 and 1.3.2, use the below line of code for colours.
@@ -1026,7 +1026,7 @@ class Scene:
                 image = image + image_
                 depth = depth + depth_
 
-        return image, depth
+        return image, depth, z_vals_origin
 
     def calculate_gaussian_directions(self, means_3D, camera):
         """
@@ -1054,7 +1054,7 @@ class Scene:
         self, camera,bin_resolution,num_bins,
         per_splat: int = -1, img_size: Tuple = (128, 128),is_train=False # 是否进入训练模式（强度-深度解耦）
     ):
-        intensity, depth=self.render(camera,per_splat,img_size)
+        intensity, depth, z_vals=self.render(camera,per_splat,img_size)
         if intensity.shape[-1]==3:
             intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
 
@@ -1080,7 +1080,7 @@ class Scene:
         #     histtt=hist.detach().cpu().numpy()
         #     scipy.io.savemat("temp/depth.mat",{"img":img,"depth":depth,"hist":histtt})
         #     exit()
-        return hist
+        return hist,z_vals
 
     def render_nonconf_hist(
         self, camera,

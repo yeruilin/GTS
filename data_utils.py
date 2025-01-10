@@ -40,33 +40,25 @@ class OptimizationParams:
         self.random_background = False
         self.optimizer_type = "default"
 
-# def wasserstein_distance(p, gt):
-#     """
-#     计算一维离散分布 p 和 q 的 Wasserstein 距离
-#     Args:
-#         p (torch.Tensor): 第一个分布，形状为 [N]
-#         gt (torch.Tensor): 第二个分布，形状为 [N]
-#     Returns:
-#         float: Wasserstein 距离
-#     """
-#     p=p.flatten()
-#     gt=gt.flatten()
-#     # 计算 Wasserstein 距离
-#     cdf_p = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
-#     cdf_q = torch.cumsum(gt, dim=0)
+def TVLoss(image):
+    """
+    计算图像的总变差损失。
+    
+    参数:
+    image (torch.Tensor): 形状为[H, W]的图像张量。
+    
+    返回:
+    torch.Tensor: 图像的TV损失。
+    """
+    # 计算水平方向的TV损失
+    tv_h = torch.mean(torch.abs(image[:, 1:] - image[:, :-1]))
+    
+    # 计算垂直方向的TV损失
+    tv_w = torch.mean(torch.abs(image[1:, :] - image[:-1, :]))
+    
+    # 返回总TV损失
+    return (tv_h + tv_w)/2
 
-#     wasserstein_dist1 = torch.mean(torch.abs(cdf_p - cdf_q))#/torch.sum(gt)
-
-#     # p = torch.flip(p, dims=[0])
-#     # gt = torch.flip(gt, dims=[0])
-
-#     # cdf_p2 = torch.cumsum(p, dim=0)  # 累积分布函数 (CDF)
-#     # cdf_q2 = torch.cumsum(gt, dim=0)
-#     # wasserstein_dist2 = torch.mean(torch.abs(cdf_p2 - cdf_q2))
-
-#     # wasserstein_dist=(wasserstein_dist1+wasserstein_dist2)/2
-
-#     return wasserstein_dist1
 
 def wasserstein_distance(p, gt,indices=None):
     """
