@@ -48,6 +48,11 @@ class ConfocalDataset(Dataset):
             # 数据归一化
             self.data=self.data/torch.max(self.data)
 
+            # 计算样本的权重
+            max_values = torch.max(self.data, dim=2).values
+            self.weights = max_values / max_values.sum()
+            self.weights=self.weights.reshape(-1)
+
         except  Exception as e:
             print("no such file!")
             exit()
@@ -59,7 +64,7 @@ class ConfocalDataset(Dataset):
         ii,jj=divmod(i, self.N)
         # ii,jj=self.N//2,self.N//2
         scan_point=(-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)
-        hist=self.data[ii,jj,:].reshape(-1)
+        hist=self.data[ii,jj,:]
         return {"hist":hist,"point":scan_point,"z_range":[self.start_index*self.bin_resolution/2,self.end_index*self.bin_resolution/2]}
 
 

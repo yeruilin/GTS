@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from model import Scene, Gaussians
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,WeightedRandomSampler
 from data_utils import save_ply,OptimizationParams,wasserstein_distance,TVLoss
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
@@ -63,7 +63,9 @@ def run_training(args):
     scene = Scene(gaussians)
     start=time.time()
     
-    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True,start_index=200,end_index=350) # 参数是mannequin的
+    start_index=200 # 参数是mannequin的
+    end_index=350
+    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=True,start_index=start_index,end_index=end_index) 
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -76,16 +78,17 @@ def run_training(args):
     opt_param=OptimizationParams()
     opt_param.densification_interval=50 # 进行增删片元的间隔
     opt_param.densify_from_iter=1
-    opt_param.densify_grad_threshold=0.01 # 0.05
+    densify_grad_threshold=0.5
     # opt_param.position_lr_init=1.6e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
+    sampler = WeightedRandomSampler(dataset.weights, len(dataset), replacement=True)
+    indices = torch.randperm(dataset.M)
+
     train_loader = DataLoader(
-        dataset, batch_size=1, shuffle=True
+        dataset, batch_size=1, sampler=sampler
     )
     train_itr = iter(train_loader)
-
-    indices = torch.randperm(dataset.M)
 
     z_mask=torch.ones((gaussians.means.shape[0],),dtype=torch.bool,device=args.device) # 设置深度过滤器
     # 对随机初始化结果进行裁剪
@@ -129,7 +132,7 @@ def run_training(args):
         gaussians.update_learning_rate(itr) # 更新学习率
 
         loss=0
-        sample_num=16
+        sample_num=64
 
         for iii in range(sample_num):
             try:
@@ -138,7 +141,7 @@ def run_training(args):
                 train_itr = iter(train_loader)
                 data = next(train_itr)
             scan_point=data["point"]
-            gt_hist=data["hist"]
+            gt_hist=data["hist"].reshape(-1)
             z1,z2=data["z_range"]
             z1=z1.to(args.device)
             z2=z2.to(args.device)
@@ -155,11 +158,12 @@ def run_training(args):
             # Rendering histogram using gaussian splatting
             hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
-            if True:
-                loss+=torch.mean((hist-gt_hist).abs()) # 降数值对齐
+            if itr<250: # 最开始和reset opacity并删除无效片元之后这样拟合效果更好
+                loss+=torch.mean((hist-gt_hist).abs())
+                # densify_grad_threshold=0.005
             else:
-                # loss+=(wasserstein_distance(hist,gt_hist)+wasserstein_distance(hist,gt_hist,indices))/2
-                loss+=wasserstein_distance(hist,gt_hist)
+                loss+=wasserstein_distance(hist,gt_hist,indices)
+                densify_grad_threshold=0.5
         
         loss=loss/sample_num
         loss.backward()
@@ -183,17 +187,17 @@ def run_training(args):
                 if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
                     print("densify_and_prune")
                     gaussians.densify_and_prune(
-                        grad_threshold=opt_param.densify_grad_threshold, 
+                        grad_threshold=densify_grad_threshold, 
                         min_opacity=0.1, 
                         extent=radius
                     )
                     # save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
-                # # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-                # if itr % 1000 == 0 or (itr == opt_param.densify_from_iter):
-                #     print("reset_colours")
-                #     # gaussians.reset_colours()
-                #     gaussians.reset_opacity(0.025) # 效果不好！
+                # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
+                if itr % 5000 == 0:
+                    print("reset_colours")
+                    # gaussians.reset_colours()
+                    gaussians.reset_opacity(0.1) # 对L1 loss来说效果不好，因为没有足够的梯度让它拟合出来
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)

@@ -22,7 +22,7 @@ class OptimizationParams:
         self.position_lr_max_steps = 30000
         self.feature_lr = 0.0025
         self.opacity_lr = 0.025
-        self.scaling_lr = 0.0005
+        self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.exposure_lr_init = 0.01
         self.exposure_lr_final = 0.001
