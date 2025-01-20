@@ -74,12 +74,14 @@ def run_training(args):
 
     loss_list=[]
 
+    sample_num=16
+
     # Training loop
     for itr in range(1,args.num_itrs):
         gaussians.update_learning_rate(itr) # 更新学习率
 
         loss=0
-        for iii in range(4*4):
+        for iii in range(sample_num):
             try:
                 data = next(train_itr)
             except StopIteration:
@@ -98,15 +100,15 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
+            hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
-            hist_max=torch.max(hist)
-            print(hist_max)
-            if itr<200:
+            if True:
                 loss+=torch.mean((hist-gt_hist).abs())
             else:
                 loss+=wasserstein_distance(hist,gt_hist)
-            
+        
+        loss=loss/sample_num
+        
         loss.backward()
         loss_list.append(loss.item()) 
 

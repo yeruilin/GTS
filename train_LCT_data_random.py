@@ -50,13 +50,15 @@ def run_training(args):
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
     # object_center=(0.0,0.0,1.3)
-    radius=0.3 ## mannequin数据的参数
+    radius=0.25 ## mannequin数据的参数
     object_center=(0.0,0.0,0.6)
     gaussians = Gaussians(
-        num_points=3000, init_type="random",
+        num_points=10000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
+
+    fov_radius=1.2*radius
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -76,9 +78,9 @@ def run_training(args):
     print("width:",dataset.width)
 
     opt_param=OptimizationParams()
-    opt_param.densification_interval=50 # 进行增删片元的间隔
+    opt_param.densification_interval=100 # 进行增删片元的间隔
     opt_param.densify_from_iter=1
-    densify_grad_threshold=0.5
+    densify_grad_threshold=0.01
     # opt_param.position_lr_init=1.6e-3
     gaussians.training_setup(opt_param) # 设置优化模式
 
@@ -86,7 +88,7 @@ def run_training(args):
     indices = torch.randperm(dataset.M)
 
     train_loader = DataLoader(
-        dataset, batch_size=1, sampler=sampler
+        dataset, batch_size=1,shuffle=True#, sampler=sampler
     )
     train_itr = iter(train_loader)
 
@@ -104,7 +106,7 @@ def run_training(args):
         z1=z1.to(args.device)
         z2=z2.to(args.device)
         dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-        fov=2*math.asin(radius/dist)
+        fov=2*math.asin(fov_radius/dist)
         R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
         current_camera = FoVPerspectiveCameras(
             znear=0.1,zfar=10.0,
@@ -132,7 +134,7 @@ def run_training(args):
         gaussians.update_learning_rate(itr) # 更新学习率
 
         loss=0
-        sample_num=64
+        sample_num=16
 
         for iii in range(sample_num):
             try:
@@ -146,7 +148,7 @@ def run_training(args):
             z1=z1.to(args.device)
             z2=z2.to(args.device)
             dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-            fov=2*math.asin(radius/dist)
+            fov=2*math.asin(fov_radius/dist)
             R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
             current_camera = FoVPerspectiveCameras(
                 znear=0.1,zfar=10.0,
@@ -158,9 +160,8 @@ def run_training(args):
             # Rendering histogram using gaussian splatting
             hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
-            if itr<250: # 最开始和reset opacity并删除无效片元之后这样拟合效果更好
-                loss+=torch.mean((hist-gt_hist).abs())
-                # densify_grad_threshold=0.005
+            if True: # 最开始和reset opacity并删除无效片元之后这样拟合效果更好
+                loss+=torch.mean((hist[start_index:end_index]-gt_hist[start_index:end_index]).abs())
             else:
                 loss+=wasserstein_distance(hist,gt_hist,indices)
                 densify_grad_threshold=0.5
@@ -194,10 +195,12 @@ def run_training(args):
                     # save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
                 # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-                if itr % 5000 == 0:
+                if itr % 500 == 0:
                     print("reset_colours")
                     # gaussians.reset_colours()
                     gaussians.reset_opacity(0.1) # 对L1 loss来说效果不好，因为没有足够的梯度让它拟合出来
+
+                    densify_grad_threshold=0.005
 
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)

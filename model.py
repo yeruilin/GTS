@@ -192,7 +192,7 @@ class Gaussians:
 
         return data
 
-    def _load_random(self, num_points: int,radius=1.0,center=(0,0,0)):
+    def _load_random(self, num_points: int,radius=1.0,center=(0,0,0),zradius=0.2):
 
         data = dict()
 
@@ -200,7 +200,8 @@ class Gaussians:
         self.center=torch.Tensor(center)
         self.radius=radius
         means_=torch.rand((num_points, 3), dtype=torch.float32) # (N, 3)
-        data["means"] = radius*(means_-0.5)*2
+        data["means"]= radius*(means_-0.5)*2
+        data["means"][:,2]=zradius*(means_[:,2]-0.5)*2
         data["means"]+=self.center.view(1,3)
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
@@ -739,14 +740,12 @@ class Scene:
 
         return idxs[count:]
 
-    def compute_alphas(self, opacities, means_2D, cov_2D, img_size):
+    def compute_exp_power(self, means_2D, cov_2D, img_size):
         """
         Given some parameters of N ordered Gaussians, this function computes
         the alpha values.
 
         Args:
-            opacities   :   A torch.Tensor of shape (N,) with the opacity value
-                            of each Gaussian.
             means_2D    :   A torch.Tensor of shape (N, 2) with the means
                             of the 2D Gaussians.
             cov_2D      :   A torch.Tensor of shape (N, 2, 2) with the covariances
@@ -780,11 +779,31 @@ class Scene:
         # Computing exp(power) with some post processing for numerical stability
         exp_power = torch.where(power > 0.0, 0.0, torch.exp(power))
 
+        exp_power = torch.reshape(exp_power, (-1, H, W))  # (N, H, W)
+
+        return exp_power
+
+    def compute_alphas(self, opacities, exp_power):
+        """
+        Given some parameters of N ordered Gaussians, this function computes
+        the alpha values.
+
+        Args:
+            opacities   :   A torch.Tensor of shape (N,) with the opacity value
+                            of each Gaussian.
+            exp_power    :  A torch.Tensor of shape (N, H, W)
+
+        Returns:
+            alphas      :   A torch.Tensor of shape (N, H, W) with the computed alpha
+                            values for each of the N ordered Gaussians at every
+                            pixel location.
+        """
+        N, W, H = exp_power.shape
+
         ### YOUR CODE HERE ###
         # HINT: Refer to README for a relevant equation.
-        alphas = opacities.unsqueeze(1)*exp_power  # (N, H*W)
-        alphas = torch.reshape(alphas, (-1, H, W))  # (N, H, W)
-
+        alphas = opacities.unsqueeze(1).unsqueeze(1)*exp_power  # (N, H, W)
+    
         # Post processing for numerical stability
         alphas = torch.minimum(alphas, torch.full_like(alphas, 0.99))
         alphas = torch.where(alphas < 1/255.0, 0.0, alphas)
@@ -907,7 +926,8 @@ class Scene:
 
         ### YOUR CODE HERE ###
         # HINT: Can you find a function in this file that can help?
-        alphas = self.compute_alphas(opacities,means_2D,cov_2D,img_size)  # (N, H, W)
+        exp_power=self.compute_exp_power(means_2D,cov_2D,img_size) # (N, H, W)
+        alphas = self.compute_alphas(opacities,exp_power)  # (N, H, W)
 
         # Step 3: Compute transmittance maps for each gaussian
 
@@ -930,8 +950,18 @@ class Scene:
         image = torch.sum(colours*alphas*transmittance,dim=0)  # (H, W, colour_dim)
 
         ### YOUR CODE HERE ###
-        # HINT: Can you implement an equation inspired by the equation for colour?
-        depth = torch.sum(z_vals*alphas*transmittance,dim=0)  # (H, W, 1)
+        # if use alpha blend
+        # depth = torch.sum(z_vals*alphas*transmittance,dim=0)  # (H, W, 1)
+
+        # if use interaction
+        m_ = (exp_power[..., None] > 0.9).float()  # [N, H, W, 1]
+        # 找到第一个超过0.9的位置的索引
+        first_occurrence = torch.argmax(m_, dim=0)  # [H, W, 1]
+        # 创建一个掩码，标记哪些位置没有超过0.9的值
+        empty_mask = ~m_.any(dim=0)  # [H, W]
+        # 使用first_occurrence索引z来获取depth
+        depth = z_vals[first_occurrence, 0, 0, 0]  # [H, W,1]
+        depth[empty_mask] = 0
 
         ### YOUR CODE HERE ###
         # HINT: Can you implement an equation inspired by the equation for colour?
