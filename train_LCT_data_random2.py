@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader,WeightedRandomSampler
 from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
-from dataset import LCTDataset,ConfocalDataset
+from dataset import RandomScanDataset,ConfocalDataset
 import time
 import math
 import scipy
@@ -47,8 +47,10 @@ def run_training(args):
     # object_center=(0.0,0.0,1.3)
     # radius=0.25 ## mannequin数据的参数
     # object_center=(0.0,0.0,0.52)
-    radius=0.25 ## teapot数据的参数
-    object_center=(0.0821,0.2270,1.1992)
+    # radius=0.25 ## teapot数据的参数
+    # object_center=(0.0821,0.2270,1.1992)
+    radius=0.6 ## fk-nt数据参数
+    object_center=(-0.0832,0.0453,1.2013)
     gaussians = Gaussians(
         num_points=15000, init_type="random",
         device=args.device, isotropic=True,
@@ -62,7 +64,8 @@ def run_training(args):
     scene = Scene(gaussians)
     start=time.time()
     
-    dataset= ConfocalDataset(args.data_path,device=args.device,is_train=False) 
+    # dataset= ConfocalDataset(args.data_path,device=args.device)
+    dataset= RandomScanDataset(args.data_path,device=args.device)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -72,44 +75,10 @@ def run_training(args):
     print("bin resolution:",bin_resolution)
     print("width:",dataset.width)
 
-    sampler = WeightedRandomSampler(dataset.weights, len(dataset), replacement=True)
-    indices = torch.randperm(dataset.M)
-
     train_loader = DataLoader(
-        dataset, batch_size=1,shuffle=True#, sampler=sampler
+        dataset, batch_size=1,shuffle=True
     )
     train_itr = iter(train_loader)
-
-    # z_mask=torch.ones((gaussians.means.shape[0],),dtype=torch.bool,device=args.device) # 设置深度过滤器
-    # # 对随机初始化结果进行裁剪
-    # for itr in range(200):
-    #     try:
-    #         data = next(train_itr)
-    #     except StopIteration:
-    #         train_itr = iter(train_loader)
-    #         data = next(train_itr)
-    #     scan_point=data["point"]
-    #     gt_hist=data["hist"]
-    #     z1,z2=data["z_range"]
-    #     z1=z1.to(args.device)
-    #     z2=z2.to(args.device)
-    #     dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-    #     fov=2*math.asin(fov_radius/dist)
-    #     R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
-    #     current_camera = FoVPerspectiveCameras(
-    #         znear=0.1,zfar=10.0,
-    #         fov=fov,degrees=False, # radian
-    #         R=R, T=T
-    #     ).to(args.device)
-    #     current_camera.image_size=(img_size,)
-
-    #     # Rendering histogram using gaussian splatting
-    #     hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
-    #     # filtering the gaussian outside the z range
-    #     z_mask=torch.logical_and(z_mask,torch.logical_and(z_vals<z2,z_vals>z1))
-
-    # print(f"depth prune number: {torch.sum(~z_mask).item()}")
-    # gaussians.prune_points_simple(~z_mask)
     
     ### 开始训练
     # 阶段一：清掉无用位置的点
@@ -130,9 +99,6 @@ def run_training(args):
                 data = next(train_itr)
             scan_point=data["point"]
             gt_hist=data["hist"].reshape(-1)
-            z1,z2=data["z_range"]
-            z1=z1.to(args.device)
-            z2=z2.to(args.device)
             dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
             fov=2*math.asin(fov_radius/dist)
             R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
@@ -144,7 +110,7 @@ def run_training(args):
             current_camera.image_size=(img_size,)
 
             # Rendering histogram using gaussian splatting
-            hist,z_vals= scene.render_conf_hist1(current_camera,bin_resolution,nums_bin)
+            hist= scene.render_conf_hist1(current_camera,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         

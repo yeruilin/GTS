@@ -1129,7 +1129,7 @@ class Scene:
         # 利用scatter_add将强度值叠加到对应bin
         hist.scatter_add_(0, indices,intensity)
 
-        return hist,z_vals
+        return hist
 
     def render_conf_hist(
         self, camera,bin_resolution,num_bins,

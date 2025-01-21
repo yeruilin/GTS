@@ -35,11 +35,6 @@ class ConfocalDataset(Dataset):
             # 数据归一化
             self.data=self.data/torch.max(self.data)
 
-            # 计算样本的权重
-            max_values = torch.max(self.data, dim=2).values
-            self.weights = max_values / max_values.sum()
-            self.weights=self.weights.reshape(-1)
-
         except  Exception as e:
             print("no such file!")
             exit()
@@ -51,7 +46,50 @@ class ConfocalDataset(Dataset):
         ii,jj=divmod(i, self.N)
         scan_point=(-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)
         hist=self.data[ii,jj,:]
-        return {"hist":hist,"point":scan_point,"z_range":[self.start_index*self.bin_resolution/2,self.end_index*self.bin_resolution/2]}
+        return {"hist":hist,"point":scan_point}
+
+# NLOS dataset with arbitary scanning pattern
+class RandomScanDataset(Dataset):
+    def __init__(self, data_path,device="cuda"):
+        try:
+            data_dict=loadmat(data_path)
+            self.bin_resolution=data_dict["bin_resolution"]
+            if type(self.bin_resolution)!=float:
+                self.bin_resolution=self.bin_resolution[0][0]
+            if self.bin_resolution<1e-9:
+                self.bin_resolution=self.bin_resolution*3e8
+            self.width=data_dict["width"]
+            if type(self.width)!=float:
+                self.width=self.width[0][0]+0.0
+            
+            self.data=data_dict["data"] # [N,N,M]
+            self.N=self.data.shape[0]
+            self.M=self.data.shape[-1]
+            self.step=self.width/(self.N-1)
+            self.device=device
+
+            self.data=torch.from_numpy(self.data).to(self.device)
+            self.data[:,:,-1]=0
+            
+            # 数据归一化
+            self.data=self.data/torch.max(self.data)
+
+            # 扫描网格
+            self.grid=data_dict["grid"]
+            print(self.grid.shape)
+
+        except  Exception as e:
+            print("no such file!")
+            exit()
+
+    def  __len__(self):
+        return self.N*self.N
+        
+    def __getitem__(self, i):
+        ii,jj=divmod(i, self.N)
+        scan_point=(self.grid[ii,jj,0],self.grid[ii,jj,1],self.grid[ii,jj,2])
+        hist=self.data[ii,jj,:]
+        return {"hist":hist,"point":scan_point}
 
 
 class LCTDataset(Dataset):
