@@ -9,8 +9,8 @@ import warnings
 
 warnings.filterwarnings('error')
 
-class ConfocalDataset(Dataset):
-    def __init__(self, data_path,z=0.0,device="cuda"):
+class NLOSDataset(Dataset):
+    def __init__(self, data_path,z=0.0,device="cuda",confocal=True):
         try:
             data_dict=loadmat(data_path)
             self.bin_resolution=data_dict["bin_resolution"]
@@ -34,6 +34,10 @@ class ConfocalDataset(Dataset):
             
             # 数据归一化
             self.data=self.data/torch.max(self.data)
+
+            if not confocal:
+                self.laserPosition=[item for sublist in data_dict["laserPosition"] for item in sublist]
+                print(self.laserPosition)
 
         except  Exception as e:
             print("no such file!")

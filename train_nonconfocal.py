@@ -41,14 +41,8 @@ def run_training(args):
         os.makedirs(args.out_path, exist_ok=True)
 
     # # 随机初始化
-    # radius=0.65 ## cow数据的参数
-    # object_center=(0.0,0.0,1.3)
-    # radius=0.25 ## mannequin数据的参数
-    # object_center=(0.0,0.0,0.52)
-    # radius=0.25 ## teapot数据的参数
-    # object_center=(0.0821,0.2270,1.1992)
-    radius=0.6 ## fk-nt数据参数
-    object_center=(-0.0832,0.0453,1.2013)
+    radius=0.2 ## nonconfocal结果
+    object_center=(0,0,0.2625)
     gaussians = Gaussians(
         num_points=15000, init_type="random",
         device=args.device, isotropic=True,
@@ -62,8 +56,7 @@ def run_training(args):
     scene = Scene(gaussians)
     start=time.time()
     
-    # dataset= NLOSDataset(args.data_path,device=args.device)
-    dataset= RandomScanDataset(args.data_path,device=args.device)
+    dataset= NLOSDataset(args.data_path,device=args.device,confocal=False)
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -77,6 +70,8 @@ def run_training(args):
         dataset, batch_size=1,shuffle=True
     )
     train_itr = iter(train_loader)
+
+    laser_camera=get_camera(dataset.laserPosition,object_center,fov_radius,img_size,args.device)
     
     ### 开始训练
     # 阶段一：清掉无用位置的点
@@ -95,14 +90,13 @@ def run_training(args):
             except StopIteration:
                 train_itr = iter(train_loader)
                 data = next(train_itr)
-
             scan_point=data["point"]
             gt_hist=data["hist"].reshape(-1)
 
             current_camera=get_camera(scan_point,object_center,fov_radius,img_size,args.device)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist1(current_camera,bin_resolution,nums_bin)
+            hist= scene.render_nonconf_hist1(current_camera,laser_camera,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         

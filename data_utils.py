@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from plyfile import PlyData,PlyElement
 from torch.utils.data import Dataset
-from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform
+from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
+import math
 
 SH_C0 = 0.28209479177387814
 CMAP_JET = plt.get_cmap("jet")
@@ -50,6 +51,20 @@ def plot_hist(hist,gt_hist,itr):
     plt.legend(loc='upper right')
     plt.savefig(f"temp/hist{itr}.png")
     plt.close()
+
+# 根据扫描点的位置和场景中心，构建一个FoV相机
+def get_camera(scan_point,object_center,fov_radius,img_size,device):
+    dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
+    fov=2*math.asin(fov_radius/dist)
+    R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
+    current_camera = FoVPerspectiveCameras(
+        znear=0.1,zfar=10.0,
+        fov=fov,degrees=False, # radian
+        R=R, T=T
+    )
+    current_camera.image_size=(img_size,)
+
+    return current_camera.to(device)
     
 def TVLoss(image):
     """

@@ -1163,6 +1163,23 @@ class Scene:
         #     exit()
         return hist,z_vals
 
+    def render_nonconf_hist1(self, detect_camera,laser_camera,bin_resolution,num_bins):
+        z_vals1 = self.compute_depth_values(detect_camera) # (N,)
+        z_vals2 = self.compute_depth_values(laser_camera) # (N,)
+
+        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten()
+
+        intensity=intensity/(z_vals1*z_vals2)
+
+        indices=((z_vals1+z_vals2)/bin_resolution).long() # 计算索引
+        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        hist=torch.zeros((num_bins,),dtype=torch.float32,device=detect_camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
+        # 利用scatter_add将强度值叠加到对应bin
+        hist.scatter_add_(0, indices,intensity)
+
+        return hist
+
     def render_nonconf_hist(
         self, camera,
         laser_point: torch.Tensor, # [1,3]
