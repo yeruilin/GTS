@@ -217,7 +217,10 @@ class Gaussians:
         data["pre_act_quats"] = quats  # (N, 4)
 
         # Initializing scales randomly
-        data["pre_act_scales"] = torch.log((torch.rand((num_points, 1), dtype=torch.float32) + 1e-6) * 0.01)
+        # data["pre_act_scales"] = torch.log((torch.rand((num_points, 1), dtype=torch.float32) + 1e-6) * 0.01)
+        # Initializing scales using the mean distance of each point to its 50 nearest points
+        dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
+        data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
 
         if not self.is_isotropic:
             data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
@@ -475,45 +478,26 @@ class Gaussians:
     def get_colour(self):
         return self.colours**2
     
-    def prune_points_simple(self, mask):
-        valid_points_mask = ~mask
+    # def prune_points_simple(self, mask):
+    #     valid_points_mask = ~mask
 
-        self.means = self.means[valid_points_mask]
-        self.colours = self.colours[valid_points_mask]
-        self.pre_act_opacities = self.pre_act_opacities[valid_points_mask]
-        self.pre_act_scales = self.pre_act_scales[valid_points_mask]
-        self.pre_act_quats = self.pre_act_quats[valid_points_mask]
+    #     self.means = self.means[valid_points_mask]
+    #     self.colours = self.colours[valid_points_mask]
+    #     self.pre_act_opacities = self.pre_act_opacities[valid_points_mask]
+    #     self.pre_act_scales = self.pre_act_scales[valid_points_mask]
+    #     self.pre_act_quats = self.pre_act_quats[valid_points_mask]
     
-    # def training_setup(self, training_args):
-    #     self.percent_dense = 0.01
-    #     self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
-    #     self.denom = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
-
-    #     l = [
-    #         {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
-    #         {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
-    #         {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
-    #         {'params': [self.pre_act_scales], 'lr': training_args.scaling_lr, "name": "scaling"},
-    #         {'params': [self.pre_act_quats], 'lr': training_args.rotation_lr, "name": "rotation"}
-    #     ]
-
-    #     if self.optimizer_type == "default":
-    #         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-    #     elif self.optimizer_type == "sparse_adam":
-    #         # try:
-    #         #     self.optimizer = SparseGaussianAdam(l, lr=0.0, eps=1e-15)
-    #         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-
-    #     self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
-    #                                                 lr_final=training_args.position_lr_final*self.spatial_lr_scale,
-    #                                                 lr_delay_mult=training_args.position_lr_delay_mult,
-    #                                                 max_steps=training_args.position_lr_max_steps)
-
     def training_setup(self, training_args):
-        
+        self.percent_dense = 0.01
+        self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
+        self.denom = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
+
         l = [
+            {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
             {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
-            # {'params': [self.means], 'lr': training_args.position_lr_init, "name": "means"}
+            {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
+            {'params': [self.pre_act_scales], 'lr': training_args.scaling_lr, "name": "scaling"},
+            {'params': [self.pre_act_quats], 'lr': training_args.rotation_lr, "name": "rotation"}
         ]
 
         if self.optimizer_type == "default":
@@ -522,6 +506,24 @@ class Gaussians:
             # try:
             #     self.optimizer = SparseGaussianAdam(l, lr=0.0, eps=1e-15)
             self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+
+        self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
+                                                    lr_final=training_args.position_lr_final*self.spatial_lr_scale,
+                                                    lr_delay_mult=training_args.position_lr_delay_mult,
+                                                    max_steps=training_args.position_lr_max_steps)
+
+    def training_setup1(self, training_args):
+        l = [
+            {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
+            {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
+            # {'params': [self.means], 'lr': training_args.position_lr_init, "name": "means"}
+        ]
+
+        self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+
+        self.colours.requires_grad=True
+        self.pre_act_opacities.requires_grad=True
+
 
     def update_learning_rate(self, iteration):
         ''' Learning rate scheduling per step '''
@@ -550,19 +552,29 @@ class Gaussians:
                 optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors
 
-    def prune_points(self, mask):
+    def prune_points1(self, mask):
         valid_points_mask = ~mask
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
         self.colours = optimizable_tensors["colours"]
         self.means = self.means[valid_points_mask]
-        self.pre_act_opacities = self.pre_act_opacities[valid_points_mask]
+        self.pre_act_opacities = optimizable_tensors["opacity"]
         self.pre_act_scales = self.pre_act_scales[valid_points_mask]
         self.pre_act_quats = self.pre_act_quats[valid_points_mask]
 
-        # self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
+    def prune_points(self, mask):
+        valid_points_mask = ~mask
+        optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
-        # self.denom = self.denom[valid_points_mask]
+        self.means = optimizable_tensors["xyz"]
+        self.colours = optimizable_tensors["colours"]
+        self.pre_act_opacities = optimizable_tensors["opacity"]
+        self.pre_act_scales = optimizable_tensors["scaling"]
+        self.pre_act_quats = optimizable_tensors["rotation"]
+
+        self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
+
+        self.denom = self.denom[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
@@ -1103,18 +1115,44 @@ class Scene:
         gaussian_dirs=torch.nn.functional.normalize(gaussian_dirs, p=2, dim=1)
         return gaussian_dirs
 
-    def render_conf_hist(
-        self, camera,bin_resolution,num_bins,
-        per_splat: int = -1, img_size: Tuple = (128, 128),is_train=False # 是否进入训练模式（强度-深度解耦）
-    ):
+    def render_conf_hist1(self, camera,bin_resolution,num_bins):
         z_vals = self.compute_depth_values(camera) # (N,)
+
+        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten()
+
+        intensity=intensity/(z_vals**2)
 
         indices=(z_vals*2/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
 
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
         # 利用scatter_add将强度值叠加到对应bin
-        hist.scatter_add_(0, indices,self.gaussians.get_colour.flatten())
+        hist.scatter_add_(0, indices,intensity)
+
+        return hist,z_vals
+
+    def render_conf_hist(
+        self, camera,bin_resolution,num_bins,
+        per_splat: int = -1, img_size: Tuple = (128, 128),is_train=False # 是否进入训练模式（强度-深度解耦）
+    ):
+        intensity, depth, z_vals=self.render(camera,per_splat,img_size)
+        if intensity.shape[-1]==3:
+            intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
+
+        select_mask = torch.where(depth > 0.1, True, False) # 深度阈值应该可以调整
+        hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
+        indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
+        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        # print(hist_inten.shape)
+
+        # 没法传递梯度
+        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
+        # 利用scatter_add将强度值叠加到对应bin
+        if is_train:
+            hist.scatter_add_(0, indices,intensity[select_mask].flatten())
+        else:
+            hist.scatter_add_(0, indices, hist_inten.flatten())
 
         # with torch.no_grad():
         #     img = intensity.detach().cpu().numpy()

@@ -34,6 +34,23 @@ def create_renders(args):
     new_points = gaussians.means - gaussians.means.mean(dim=0, keepdims=True)
     gaussians.means = new_points
 
+    print(torch.min(gaussians.colours))
+    print(torch.max(gaussians.colours))
+    print(torch.mean(gaussians.colours))
+    print(torch.median(gaussians.colours))
+
+    mask=(gaussians.colours[:,0]>0.523).squeeze()
+
+    gaussians.colours=gaussians.colours[mask]
+    gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
+    gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
+    gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
+    gaussians.means=gaussians.means[mask]
+
+    _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
+    radius=0.5*torch.max(_range)
+    print("radius:",radius)
+
     # Creating the scene with the loaded gaussians
     scene = Scene(gaussians)
 

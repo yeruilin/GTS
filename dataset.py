@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('error')
 
 class ConfocalDataset(Dataset):
-    def __init__(self, data_path,z=0.0,is_train=False,device="cuda",start_index=0,end_index=-1):
+    def __init__(self, data_path,z=0.0,device="cuda"):
         try:
             data_dict=loadmat(data_path)
             self.bin_resolution=data_dict["bin_resolution"]
@@ -28,22 +28,9 @@ class ConfocalDataset(Dataset):
             self.step=self.width/(self.N-1)
             self.device=device
             self.z=z
-            self.train=is_train
-
-            self.start_index=start_index
-            if end_index!=-1:
-                self.end_index=end_index
-            else:
-                self.end_index=self.M
 
             self.data=torch.from_numpy(self.data).to(self.device)
             self.data[:,:,-1]=0
-
-            # 将深度衰减补上
-            if self.train:
-                grid_z=torch.linspace(0,self.M,self.M,dtype=torch.float32,device=self.device)*self.bin_resolution
-                grid_z=grid_z.view(1,1,-1)
-                self.data=self.data*(grid_z**2)
             
             # 数据归一化
             self.data=self.data/torch.max(self.data)
@@ -62,7 +49,6 @@ class ConfocalDataset(Dataset):
         
     def __getitem__(self, i):
         ii,jj=divmod(i, self.N)
-        # ii,jj=self.N//2,self.N//2
         scan_point=(-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)
         hist=self.data[ii,jj,:]
         return {"hist":hist,"point":scan_point,"z_range":[self.start_index*self.bin_resolution/2,self.end_index*self.bin_resolution/2]}

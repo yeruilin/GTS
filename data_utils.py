@@ -40,6 +40,17 @@ class OptimizationParams:
         self.random_background = False
         self.optimizer_type = "default"
 
+def plot_hist(hist,gt_hist,itr):
+    hist=hist.detach().cpu().numpy()
+    gt_hist=gt_hist.detach().cpu().numpy()
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(hist,label='hist')
+    plt.plot(gt_hist,label='gt_hist')
+    plt.legend(loc='upper right')
+    plt.savefig(f"temp/hist{itr}.png")
+    plt.close()
+    
 def TVLoss(image):
     """
     计算图像的总变差损失。
