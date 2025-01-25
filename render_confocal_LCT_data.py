@@ -10,6 +10,8 @@ from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras,
 
 from scipy.io import savemat
 
+### 将高斯片元绘制为共焦的瞬态图
+
 def create_renders(args):
 
     dim = args.img_dim

@@ -108,7 +108,7 @@ def run_training(args):
             # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
             plot_hist(hist,gt_hist,itr)
         
-        if itr%1000==0:
+        if itr%500==0:
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
         with torch.no_grad():
@@ -122,6 +122,17 @@ def run_training(args):
             prune_mask=torch.logical_or(prune_color_mask,prune_opacity_mask)
             gaussians.prune_points1(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
+        
+        # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
+        if itr==500:
+            # 删除小于均值的位置
+            prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
+            gaussians.prune_points1(prune_mask)
+            print(f"prune number: {torch.sum(prune_mask).item()}")
+
+            # 剩下的点全都进行拷贝
+            gaussians.densify_and_clone1(copy_num=2)
+            print(f"Gaussian number left: {gaussians.means.shape[0]}")
 
     # # 阶段二：考虑互相遮挡的问题
     # opt_param=OptimizationParams()

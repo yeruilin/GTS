@@ -128,21 +128,30 @@ def run_training(args):
             prune_mask=torch.logical_or(prune_color_mask,prune_opacity_mask)
             gaussians.prune_points1(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
+        
+        # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
+        if itr==3000:
+            # 删除小于均值的位置
+            prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
+            gaussians.prune_points1(prune_mask)
+            print(f"prune number: {torch.sum(prune_mask).item()}")
+
+            # 剩下的点全都进行拷贝
+            gaussians.densify_and_clone1(copy_num=2)
+            print(f"Gaussian number left: {gaussians.means.shape[0]}")
 
     # # 阶段二：考虑互相遮挡的问题
     # opt_param=OptimizationParams()
     # opt_param.densification_interval=50
     # opt_param.densify_from_iter=1
-    # densify_grad_threshold=0.005
+    # densify_grad_threshold=0.5
     # gaussians.training_setup(opt_param)
-
     # make_trainable(gaussians)
+
     # loss_list=[]
 
     # # Training loop
-    # for itr in range(depth_prune_itr+1,args.num_itrs):
-    #     gaussians.update_learning_rate(itr) # 更新学习率
-
+    # for itr in range(args.num_itrs,args.num_itrs+501):
     #     loss=0
     #     sample_num=16
 
@@ -152,39 +161,27 @@ def run_training(args):
     #         except StopIteration:
     #             train_itr = iter(train_loader)
     #             data = next(train_itr)
+
     #         scan_point=data["point"]
     #         gt_hist=data["hist"].reshape(-1)
-    #         z1,z2=data["z_range"]
-    #         z1=z1.to(args.device)
-    #         z2=z2.to(args.device)
-    #         dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-    #         fov=2*math.asin(fov_radius/dist)
-    #         R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
-    #         current_camera = FoVPerspectiveCameras(
-    #             znear=0.1,zfar=10.0,
-    #             fov=fov,degrees=False, # radian
-    #             R=R, T=T
-    #         ).to(args.device)
-    #         current_camera.image_size=(img_size,)
+
+    #         current_camera=get_camera(scan_point,object_center,fov_radius,img_size,args.device)
 
     #         # Rendering histogram using gaussian splatting
     #         hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
 
-    #         if True: # 最开始和reset opacity并删除无效片元之后这样拟合效果更好
-    #             loss+=torch.mean((hist[start_index:end_index]-gt_hist[start_index:end_index]).abs())
-    #         else:
-    #             loss+=wasserstein_distance(hist,gt_hist,indices)
-    #             densify_grad_threshold=0.5
+    #         loss+=torch.mean((hist-gt_hist).abs())
         
     #     loss=loss/sample_num
     #     loss.backward()
     #     loss_list.append(loss.item())
 
     #     if itr%50==0:
-    #         save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    #         save_ply(f"temp/splat_result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
     #         # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
     #         plot_hist(hist,gt_hist,itr)
 
+    #     print(torch.max(gaussians.pre_act_scales.grad),torch.mean(gaussians.pre_act_scales.grad))
     #     print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
     #     with torch.no_grad():
@@ -203,15 +200,6 @@ def run_training(args):
     #                     min_opacity=0.1, 
     #                     extent=radius
     #                 )
-    #                 # save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-
-    #             # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-    #             if itr % 500 == 0:
-    #                 print("reset_colours")
-    #                 # gaussians.reset_colours()
-    #                 gaussians.reset_opacity(0.1) # 对L1 loss来说效果不好，因为没有足够的梯度让它拟合出来
-
-    #                 densify_grad_threshold=0.005
 
     #         gaussians.optimizer.step()
     #         gaussians.optimizer.zero_grad(set_to_none = True)

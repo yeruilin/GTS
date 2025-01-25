@@ -478,15 +478,58 @@ class Gaussians:
     def get_colour(self):
         return self.colours**2
     
-    # def prune_points_simple(self, mask):
-    #     valid_points_mask = ~mask
+    # 第一阶段处理函数
+    def training_setup1(self, training_args):
+        l = [
+            {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
+            {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
+            # {'params': [self.means], 'lr': training_args.position_lr_init, "name": "means"}
+        ]
 
-    #     self.means = self.means[valid_points_mask]
-    #     self.colours = self.colours[valid_points_mask]
-    #     self.pre_act_opacities = self.pre_act_opacities[valid_points_mask]
-    #     self.pre_act_scales = self.pre_act_scales[valid_points_mask]
-    #     self.pre_act_quats = self.pre_act_quats[valid_points_mask]
+        self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+
+        self.colours.requires_grad=True
+        self.pre_act_opacities.requires_grad=True
     
+    def densify_and_clone1(self,copy_num=2):
+        # 找到满足条件的片元，然后复制两份
+        stds = self.get_scaling.repeat(copy_num,1)
+        means =torch.zeros((stds.size(0), 3),device=self.device)
+        samples = torch.normal(mean=means, std=stds)
+        rots=quaternion_to_matrix(self.pre_act_quats.view(-1,4)).repeat(copy_num,1,1)
+        # 拷贝后片元中心略有平移
+        new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz.repeat(copy_num, 1)
+        # 拷贝后scale下降
+        new_scales = self.scaling_inverse_activation(self.get_scaling.repeat(copy_num,1) / (0.8*copy_num))
+        # 拷贝后旋转、颜色、透明度不变
+        new_quats = self.pre_act_quats.repeat(copy_num,1)
+        new_colours = self.colours.repeat(copy_num,1)
+        new_opacity = self.pre_act_opacities.repeat(copy_num)
+
+        # 将新的split产生的tensor和之前的tensor合并到一起
+        d = {"colours": new_colours,
+        "opacity": new_opacity}
+
+        # 将新生成的tensor拼接到之前的变量上
+        optimizable_tensors = self.cat_tensors_to_optimizer(d)
+        self.colours = optimizable_tensors["colours"]
+        self.pre_act_opacities = optimizable_tensors["opacity"]
+
+        self.means=torch.cat((self.means, new_xyz), dim=0)
+        self.pre_act_scales=torch.cat((self.pre_act_scales, new_scales), dim=0)
+        self.pre_act_quats=torch.cat((self.pre_act_quats, new_quats), dim=0)
+
+    def prune_points1(self, mask):
+        valid_points_mask = ~mask
+        optimizable_tensors = self._prune_optimizer(valid_points_mask)
+
+        self.colours = optimizable_tensors["colours"]
+        self.means = self.means[valid_points_mask]
+        self.pre_act_opacities = optimizable_tensors["opacity"]
+        self.pre_act_scales = self.pre_act_scales[valid_points_mask]
+        self.pre_act_quats = self.pre_act_quats[valid_points_mask]
+
+
     def training_setup(self, training_args):
         self.percent_dense = 0.01
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
@@ -500,38 +543,7 @@ class Gaussians:
             {'params': [self.pre_act_quats], 'lr': training_args.rotation_lr, "name": "rotation"}
         ]
 
-        if self.optimizer_type == "default":
-            self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-        elif self.optimizer_type == "sparse_adam":
-            # try:
-            #     self.optimizer = SparseGaussianAdam(l, lr=0.0, eps=1e-15)
-            self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-
-        self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
-                                                    lr_final=training_args.position_lr_final*self.spatial_lr_scale,
-                                                    lr_delay_mult=training_args.position_lr_delay_mult,
-                                                    max_steps=training_args.position_lr_max_steps)
-
-    def training_setup1(self, training_args):
-        l = [
-            {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
-            {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
-            # {'params': [self.means], 'lr': training_args.position_lr_init, "name": "means"}
-        ]
-
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-
-        self.colours.requires_grad=True
-        self.pre_act_opacities.requires_grad=True
-
-
-    def update_learning_rate(self, iteration):
-        ''' Learning rate scheduling per step '''
-        for param_group in self.optimizer.param_groups:
-            if param_group["name"] == "xyz":
-                lr = self.xyz_scheduler_args(iteration)
-                param_group['lr'] = lr
-                return lr
     
     # 对高斯片元实现增删
     def _prune_optimizer(self, mask):
@@ -551,16 +563,6 @@ class Gaussians:
                 group["params"][0] = nn.Parameter(group["params"][0][mask].requires_grad_(True))
                 optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors
-
-    def prune_points1(self, mask):
-        valid_points_mask = ~mask
-        optimizable_tensors = self._prune_optimizer(valid_points_mask)
-
-        self.colours = optimizable_tensors["colours"]
-        self.means = self.means[valid_points_mask]
-        self.pre_act_opacities = optimizable_tensors["opacity"]
-        self.pre_act_scales = self.pre_act_scales[valid_points_mask]
-        self.pre_act_quats = self.pre_act_quats[valid_points_mask]
 
     def prune_points(self, mask):
         valid_points_mask = ~mask
@@ -1084,14 +1086,22 @@ class Scene:
 
                 # Get image, depth and mask via splatting
                 image_, depth_, start_transmittance= self.splat(
-                    camera, means_3D_, z_vals_, quats_, scales_, colours_,
-                    opacities_, img_size, start_transmittance
-                ) # 这里means_2D没有累加，此模式运行有问题，必须一次全导入
+                    camera, means_3D_, z_vals_, quats_, scales_,
+                    colours_, opacities_, img_size,start_transmittance
+                )
 
                 image = image + image_
-                depth = depth + depth_
 
-        return image, depth, z_vals_origin
+                # if use alpha blend
+                # depth = depth + depth_ 
+
+                # if use interaction
+                xor_mask=(depth==0)^(depth_==0)
+                minvalue=torch.minimum(depth,depth_)
+                maxvalue=torch.maximum(depth,depth_)
+                depth=torch.where(xor_mask,maxvalue,minvalue)
+
+        return image, depth
 
     def calculate_gaussian_directions(self, means_3D, camera):
         """

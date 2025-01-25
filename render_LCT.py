@@ -7,8 +7,12 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from model_old import Gaussians, Scene
+# from model2 import Gaussians,Scene
 from data_utils import colour_depth_q1_render
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
+
+import math
+import matplotlib.pyplot as plt
 
 def create_renders(args):
 
@@ -30,29 +34,35 @@ def create_renders(args):
 
     filename=args.data_path.split("/")[-1][:-4]
 
-    # Preprocessing for ease of rendering
-    new_points = gaussians.means - gaussians.means.mean(dim=0, keepdims=True)
-    gaussians.means = new_points
+    object_center=gaussians.means.mean(dim=0, keepdims=True).flatten().detach().cpu().numpy()
+    object_center=(object_center[0],object_center[1],object_center[2])
+    print(object_center)
 
     print(torch.min(gaussians.colours))
     print(torch.max(gaussians.colours))
     print(torch.mean(gaussians.colours))
     print(torch.median(gaussians.colours))
 
-    mask=(gaussians.colours[:,0]>torch.mean(gaussians.colours)).squeeze()
-    # mask=(gaussians.colours[:,0]>0.54).squeeze()
+    # mask=(gaussians.colours[:,0]>torch.mean(gaussians.colours)).squeeze()
+    # mask=(gaussians.colours[:,0]>0.517).squeeze()
 
-    gaussians.colours=gaussians.colours[mask]
-    gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
-    gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
-    gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
-    gaussians.means=gaussians.means[mask]
+    # gaussians.colours=gaussians.colours[mask]
+    # gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
+    # gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
+    # gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
+    # gaussians.means=gaussians.means[mask]
 
-    _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
-    radius=0.5*torch.max(_range)
-    print("radius:",radius)
+    # _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
+    # radius=0.5*torch.max(_range)
+    # print("radius:",radius)
 
     # Creating the scene with the loaded gaussians
+    scene = Scene(gaussians)
+
+    # Preprocessing for ease of rendering
+    new_points = gaussians.means - gaussians.means.mean(dim=0, keepdims=True)
+    gaussians.means = new_points
+
     scene = Scene(gaussians)
 
     bg_colour=(1.0, 1.0, 1.0) # 背景颜色
@@ -83,6 +93,11 @@ def create_renders(args):
         depth = depth[:, :, 0].astype(np.float32)  # (H, W) # 有效的depth在5-7之间，因此可以在这个范围归一化配置颜色
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
+        ## 旋转180°
+        img=np.flipud(np.fliplr(img))
+        coloured_depth=np.flipud(np.fliplr(coloured_depth))
+        mask=np.flipud(np.fliplr(mask))
+
         concat = np.concatenate([img, coloured_depth, mask], axis = 1)
         resized = Image.fromarray(concat).resize((256*3, 256))
         resized.save(debug_path)
@@ -91,6 +106,7 @@ def create_renders(args):
 
     gif_path = os.path.join(args.out_path, f"{filename}.gif")
     imageio.mimwrite(gif_path, imgs, duration=1000.0*(1/10.0), loop=0)
+    
 
 def get_args():
 
