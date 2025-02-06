@@ -66,14 +66,13 @@ class RandomScanDataset(Dataset):
             if type(self.width)!=float:
                 self.width=self.width[0][0]+0.0
             
-            self.data=data_dict["data"] # [N,N,M]
-            self.N=self.data.shape[0]
+            self.data=data_dict["data"] # [sample_num,M]
+            self.N=64
             self.M=self.data.shape[-1]
-            self.step=self.width/(self.N-1)
             self.device=device
 
             self.data=torch.from_numpy(self.data).to(self.device)
-            self.data[:,:,-1]=0
+            self.data[:,-1]=0
             
             # 数据归一化
             self.data=self.data/torch.max(self.data)
@@ -87,12 +86,11 @@ class RandomScanDataset(Dataset):
             exit()
 
     def  __len__(self):
-        return self.N*self.N
+        return self.data.shape[0]
         
     def __getitem__(self, i):
-        ii,jj=divmod(i, self.N)
-        scan_point=(self.grid[ii,jj,0],self.grid[ii,jj,1],self.grid[ii,jj,2])
-        hist=self.data[ii,jj,:]
+        scan_point=(self.grid[i,0],self.grid[i,1],self.grid[i,2])
+        hist=self.data[i,:]
         return {"hist":hist,"point":scan_point}
 
 

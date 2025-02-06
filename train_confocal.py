@@ -50,10 +50,8 @@ def run_training(args):
     # thresh=0.003
     # radius=0.25 ## teapot数据的参数
     # object_center=(0.0821,0.2270,1.1992)
-    # radius=0.6 ## bunny的参数
-    # object_center=(0.0037,0.1018,0.8335)
-    radius=0.6 ## fk-nt数据参数
-    object_center=(-0.0832,0.0453,1.2013)
+    radius=0.6 ## bunny的参数
+    object_center=(0.0037,0.1018,0.8335)
     
     gaussians = Gaussians(
         num_points=20000, init_type="random",
@@ -125,12 +123,12 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr==100:
+        if itr==200:
             prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
             gaussians.prune_points1(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            gaussians.densify_and_clone1(copy_num=5)
+            gaussians.densify_and_clone1(copy_num=3)
         
         if itr%500==0:
             prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
