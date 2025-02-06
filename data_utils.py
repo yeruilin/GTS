@@ -364,7 +364,7 @@ def load_gaussians_from_ply(path):
 
     output = {
         "xyz": xyz, "rot": rots, "scale": scales,
-        "sh": shs, "opacity": opacities, "dc_colours": dc_colours
+        "sh": shs, "opacity": opacities, "dc_colours": dc_vals
     }
     return output
 

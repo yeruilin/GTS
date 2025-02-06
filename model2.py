@@ -1132,8 +1132,13 @@ class Scene:
 
         intensity=intensity/(z_vals**2)
 
-        indices=(z_vals*2/bin_resolution).long() # 计算索引
-        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+        indices_float=z_vals*2/bin_resolution # 计算索引
+        indices_float = torch.clamp(indices_float, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        # 强度按照距离分配到两个bin上
+        indices=torch.cat([indices_float.long(),indices_float.long()+1],dim=0)
+        weight=indices_float-indices_float.long()
+        intensity=torch.cat([intensity*(1-weight),intensity*weight],dim=0)
 
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
         # 利用scatter_add将强度值叠加到对应bin
@@ -1179,7 +1184,7 @@ class Scene:
 
         intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten()
 
-        intensity=intensity/(z_vals1*z_vals2)
+        intensity=intensity/(z_vals1*z_vals1*z_vals2*z_vals2)
 
         indices=((z_vals1+z_vals2)/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围

@@ -372,6 +372,10 @@ class Gaussians:
         cov_2D[:, 1, 1] += 0.3
 
         return cov_2D
+    
+    @property
+    def get_colour(self):
+        return self.colours**2
 
     @staticmethod
     def compute_means_2D(means_3D: torch.Tensor, camera: PerspectiveCameras):
@@ -994,7 +998,7 @@ class Scene:
 
         # For questions 1.1, 1.2 and 1.3.2, use the below line of code for colours.
         if not self.gaussians.sphere:
-            colours = self.gaussians.colours[idxs] # 不用球谐分量
+            colours = self.gaussians.get_colour[idxs] # 不用球谐分量
 
         # [Q 1.3.1] For question 1.3.1, uncomment the below three lines to calculate the
         # colours instead of using self.gaussians.colours[idxs]. You may also comment

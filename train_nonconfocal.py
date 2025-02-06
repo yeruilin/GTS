@@ -41,8 +41,10 @@ def run_training(args):
         os.makedirs(args.out_path, exist_ok=True)
 
     # # 随机初始化
-    radius=0.2 ## nonconfocal结果
-    object_center=(0,0,0.2625)
+    radius=0.2 ## K的参数
+    object_center=(0,0,0.3)
+    # radius=0.6 ## bunny的参数
+    # object_center=(0.0037,0.1018,0.8335)
     gaussians = Gaussians(
         num_points=15000, init_type="random",
         device=args.device, isotropic=True,
@@ -65,6 +67,7 @@ def run_training(args):
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
     print("width:",dataset.width)
+    print("laser position:",dataset.laserPosition)
 
     train_loader = DataLoader(
         dataset, batch_size=1,shuffle=True
@@ -107,24 +110,28 @@ def run_training(args):
         if itr%50==0:
             # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
             plot_hist(hist,gt_hist,itr)
-        
-        if itr%500==0:
-            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-
+            
         with torch.no_grad():
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr==200 or itr%500==0:
-            prune_color_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
-            prune_opacity_mask=torch.where(gaussians.get_opacity<=0.01, True, False).flatten()
-            prune_mask=torch.logical_or(prune_color_mask,prune_opacity_mask)
+        if itr==200:
+            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
             gaussians.prune_points1(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
+
+            gaussians.densify_and_clone1(copy_num=5)
+        
+        if itr%500==0:
+            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
+            gaussians.prune_points1(prune_mask)
+            print(f"prune number: {torch.sum(prune_mask).item()}")
+
+            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
         
         # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        if itr==500:
+        if itr==4000:
             # 删除小于均值的位置
             prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
             gaussians.prune_points1(prune_mask)

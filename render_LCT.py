@@ -8,7 +8,7 @@ from PIL import Image
 from tqdm import tqdm
 from model_old import Gaussians, Scene
 # from model2 import Gaussians,Scene
-from data_utils import colour_depth_q1_render
+from data_utils import colour_depth_q1_render,save_ply
 from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
 
 import math
@@ -38,23 +38,26 @@ def create_renders(args):
     object_center=(object_center[0],object_center[1],object_center[2])
     print(object_center)
 
-    print(torch.min(gaussians.colours))
-    print(torch.max(gaussians.colours))
-    print(torch.mean(gaussians.colours))
-    print(torch.median(gaussians.colours))
+    print(torch.min(gaussians.get_colour))
+    print(torch.max(gaussians.get_colour))
+    print(torch.mean(gaussians.get_colour))
+    print(torch.median(gaussians.get_colour))
 
-    # mask=(gaussians.colours[:,0]>torch.mean(gaussians.colours)).squeeze()
-    # mask=(gaussians.colours[:,0]>0.517).squeeze()
+    mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
+    # mask=(gaussians.get_colour[:,0]>0.0012).squeeze()
 
-    # gaussians.colours=gaussians.colours[mask]
-    # gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
-    # gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
-    # gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
-    # gaussians.means=gaussians.means[mask]
+    gaussians.colours=gaussians.colours[mask]
+    gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
+    gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
+    gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
+    gaussians.means=gaussians.means[mask]
 
-    # _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
-    # radius=0.5*torch.max(_range)
-    # print("radius:",radius)
+    # save_ply("temp/test.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,1)
+    # exit()
+
+    _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
+    radius=0.5*torch.max(_range)
+    print("radius:",radius)
 
     # Creating the scene with the loaded gaussians
     scene = Scene(gaussians)
@@ -86,7 +89,8 @@ def create_renders(args):
         mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
         depth = depth.detach().cpu().numpy()
 
-        img = (np.clip(img, 0.0, 1.0) * 255.0).astype(np.uint8)
+        img = np.clip(img, 0.0, 1.0)
+        img = (img * 255.0).astype(np.uint8)
         mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 
         # Colouring the depth map
