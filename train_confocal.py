@@ -50,11 +50,14 @@ def run_training(args):
     # thresh=0.003
     # radius=0.25 ## teapot数据的参数
     # object_center=(0.0821,0.2270,1.1992)
-    radius=0.6 ## bunny的参数
-    object_center=(0.0037,0.1018,0.8335)
+    # radius=0.6 ## bunny的参数
+    # object_center=(0.0037,0.1018,0.8335)
+
+    radius=0.6 ## fk-dragon数据参数
+    object_center=(0,0,1.3)
     
     gaussians = Gaussians(
-        num_points=20000, init_type="random",
+        num_points=15000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
@@ -66,8 +69,8 @@ def run_training(args):
     scene = Scene(gaussians)
     start=time.time()
     
-    # dataset= NLOSDataset(args.data_path,device=args.device)
-    dataset= RandomScanDataset(args.data_path,device=args.device)
+    dataset= NLOSDataset(args.data_path,device=args.device)
+    
     img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M

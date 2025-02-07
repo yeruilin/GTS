@@ -43,11 +43,13 @@ def run_training(args):
     thresh=0.0 # 颜色阈值
 
     # # 随机初始化
-    # radius=0.6 ## fk-nt数据参数
+    # radius=0.6 ## random-nt数据参数
     # object_center=(-0.0832,0.0453,1.2013)
-    radius=0.6 ## fk-statue数据参数
-    object_center=(0,0,0.9)
-    thresh=0.017
+    # radius=0.6 ## random-statue数据参数
+    # object_center=(0,0,0.9)
+    # thresh=0.017
+    radius=0.6 ## random-bunny数据参数
+    object_center=(0,0,1.3)
     
     gaussians = Gaussians(
         num_points=20000, init_type="random",
@@ -119,12 +121,12 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr==100:
+        if itr==200:
             prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
             gaussians.prune_points1(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            gaussians.densify_and_clone1(copy_num=5)
+            # gaussians.densify_and_clone1(copy_num=5)
         
         if itr%500==0:
             prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
@@ -133,7 +135,7 @@ def run_training(args):
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
         
         # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        if itr==1000:
+        if itr==4000:
             # 删除小于均值的位置
             if thresh==0:
                 prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
