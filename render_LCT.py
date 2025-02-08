@@ -43,8 +43,8 @@ def create_renders(args):
     print(torch.mean(gaussians.get_colour))
     print(torch.median(gaussians.get_colour))
 
-    mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.means[:,2]<1.45).squeeze()
+    mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
+    # mask=(gaussians.get_colour[:,0]>0.003).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
     gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
@@ -101,10 +101,6 @@ def create_renders(args):
         img=np.flipud(np.fliplr(img))
         coloured_depth=np.flipud(np.fliplr(coloured_depth))
         mask=np.flipud(np.fliplr(mask))
-
-        img=np.rot90(img)
-        coloured_depth=np.rot90(coloured_depth)
-        mask=np.rot90(mask)
 
         concat = np.concatenate([img, coloured_depth, mask], axis = 1)
         resized = Image.fromarray(concat).resize((256*3, 256))

@@ -143,6 +143,9 @@ class Gaussians:
         data["pre_act_opacities"] = torch.tensor(ply_gaussians["opacity"]).squeeze()
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
 
+        if self.colour_dim==1:
+            data["colours"]=data["colours"][:,0:1]
+
         is_isotropic = False
         if data["pre_act_scales"].shape[1] != 3:
             is_isotropic=True
@@ -478,19 +481,6 @@ class Gaussians:
     def get_colour(self):
         return self.colours**2
     
-    # 第一阶段处理函数
-    def training_setup1(self, training_args):
-        l = [
-            {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
-            {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
-            # {'params': [self.means], 'lr': training_args.position_lr_init, "name": "means"}
-        ]
-
-        self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-
-        self.colours.requires_grad=True
-        self.pre_act_opacities.requires_grad=True
-    
     def densify_and_clone1(self,copy_num=2):
         # 找到满足条件的片元，然后复制两份
         stds = self.get_scaling.repeat(copy_num,1)
@@ -500,34 +490,13 @@ class Gaussians:
         # 拷贝后片元中心略有平移
         new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz.repeat(copy_num, 1)
         # 拷贝后scale下降
-        new_scales = self.scaling_inverse_activation(self.get_scaling.repeat(copy_num,1) / (0.8*copy_num))
+        new_scaling = self.scaling_inverse_activation(self.get_scaling.repeat(copy_num,1) / (0.8*copy_num))
         # 拷贝后旋转、颜色、透明度不变
-        new_quats = self.pre_act_quats.repeat(copy_num,1)
+        new_rotation = self.pre_act_quats.repeat(copy_num,1)
         new_colours = self.colours.repeat(copy_num,1)
-        new_opacity = self.pre_act_opacities.repeat(copy_num)
+        new_opacities = self.pre_act_opacities.repeat(copy_num)
 
-        # 将新的split产生的tensor和之前的tensor合并到一起
-        d = {"colours": new_colours,
-        "opacity": new_opacity}
-
-        # 将新生成的tensor拼接到之前的变量上
-        optimizable_tensors = self.cat_tensors_to_optimizer(d)
-        self.colours = optimizable_tensors["colours"]
-        self.pre_act_opacities = optimizable_tensors["opacity"]
-
-        self.means=torch.cat((self.means, new_xyz), dim=0)
-        self.pre_act_scales=torch.cat((self.pre_act_scales, new_scales), dim=0)
-        self.pre_act_quats=torch.cat((self.pre_act_quats, new_quats), dim=0)
-
-    def prune_points1(self, mask):
-        valid_points_mask = ~mask
-        optimizable_tensors = self._prune_optimizer(valid_points_mask)
-
-        self.colours = optimizable_tensors["colours"]
-        self.means = self.means[valid_points_mask]
-        self.pre_act_opacities = optimizable_tensors["opacity"]
-        self.pre_act_scales = self.pre_act_scales[valid_points_mask]
-        self.pre_act_quats = self.pre_act_quats[valid_points_mask]
+        self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling, new_rotation)
 
 
     def training_setup(self, training_args):
@@ -1145,12 +1114,39 @@ class Scene:
         hist.scatter_add_(0, indices,intensity)
 
         return hist
+    
+    # 利用极坐标的形式计算histogram
+    def render_conf_hist2(self, camera,bin_resolution,num_bins):
+        # 计算强度
+        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
+
+        # 计算片元中心的深度
+        r0 = self.compute_depth_values(camera).unsqueeze(1) # (N,1)
+
+        r_=bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
+        r=r_.view(1,num_bins) #(1,M)
+
+        sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
+        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
+
+        # 每个深度的概率
+        pdf=math.sqrt(0.5/math.pi) * (r/(r0*sigma))*torch.exp(-0.5*((r-r0)/sigma)**2) # 概率密度,[N,M]
+        pr=pdf*bin_resolution/2 # 概率, [N,M]
+        pr=torch.clip(pr,0,1)
+
+        # print(torch.mean(torch.sum(pr,1)))
+
+        hist=intensity.unsqueeze(1)*pr # (N,M)
+        hist=torch.sum(hist,dim=0).flatten()
+        hist=hist/r_**2
+
+        return hist
 
     def render_conf_hist(
         self, camera,bin_resolution,num_bins,
         per_splat: int = -1, img_size: Tuple = (128, 128),is_train=False # 是否进入训练模式（强度-深度解耦）
     ):
-        intensity, depth, z_vals=self.render(camera,per_splat,img_size)
+        intensity, depth=self.render(camera,per_splat,img_size)
         if intensity.shape[-1]==3:
             intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
 
@@ -1176,7 +1172,7 @@ class Scene:
         #     histtt=hist.detach().cpu().numpy()
         #     scipy.io.savemat("temp/depth.mat",{"img":img,"depth":depth,"hist":histtt})
         #     exit()
-        return hist,z_vals
+        return hist
 
     def render_nonconf_hist1(self, detect_camera,laser_camera,bin_resolution,num_bins):
         z_vals1 = self.compute_depth_values(detect_camera) # (N,)
