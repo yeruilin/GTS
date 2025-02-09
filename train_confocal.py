@@ -48,15 +48,15 @@ def run_training(args):
     # radius=0.25 ## mannequin数据的参数
     # object_center=(0.0,0.0,0.52)
     # thresh=0.003
-    radius=0.25 ## teapot数据的参数
-    object_center=(0.0821,0.2270,1.1992)
-    # radius=0.6 ## bunny的参数
-    # object_center=(0.0037,0.1018,0.8335)
+    # radius=0.25 ## teapot数据的参数
+    # object_center=(0.0821,0.2270,1.1992)
+    radius=0.6 ## bunny的参数
+    object_center=(0.0037,0.1018,0.8335)
     # radius=0.6 ## fk-dragon数据参数
     # object_center=(0,0,1.3)
     
     gaussians = Gaussians(
-        num_points=15000, init_type="random",
+        num_points=20000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
@@ -253,7 +253,7 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--num_itrs", default=1000, type=int,
+        "--num_itrs", default=1001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(

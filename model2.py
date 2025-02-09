@@ -140,7 +140,6 @@ class Gaussians:
         data["means"] = torch.tensor(ply_gaussians["xyz"])
         data["pre_act_quats"] = torch.tensor(ply_gaussians["rot"])
         data["pre_act_scales"] = torch.tensor(ply_gaussians["scale"])
-        data["pre_act_scales"][:,:]=-3.0
         data["pre_act_opacities"] = torch.tensor(ply_gaussians["opacity"]).squeeze()
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
 
@@ -504,20 +503,42 @@ class Gaussians:
         means =torch.zeros((stds.size(0), 3),device=self.device)
         samples = torch.normal(mean=means, std=stds)
         rots=quaternion_to_matrix(self.pre_act_quats[selected_pts_mask].view(-1,4)).repeat(copy_num,1,1)
+        
+        # 用于替代之前的片元
+        new_xyz_=self.get_xyz[selected_pts_mask]
+        new_scaling_ = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask] / (0.7*copy_num)) # 拷贝后scale下降
+        new_rotation_=self.pre_act_quats[selected_pts_mask]
+        new_colours_ = self.colours[selected_pts_mask]
+        new_opacity_ = self.pre_act_opacities[selected_pts_mask]
+
         # 拷贝后片元中心略有平移
-        new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(copy_num, 1)
-        # 拷贝后scale下降
-        new_scaling = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask].repeat(copy_num,1) / (0.8*copy_num))
+        new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + new_xyz_.repeat(copy_num, 1)
+        new_scaling=new_scaling_.repeat(copy_num,1)
         # 拷贝后旋转、颜色、透明度不变
-        new_rotation = self.pre_act_quats[selected_pts_mask].repeat(copy_num,1)
-        new_colours = self.colours[selected_pts_mask].repeat(copy_num,1)
-        new_opacity = self.pre_act_opacities[selected_pts_mask].repeat(copy_num)
+        new_rotation = new_rotation_.repeat(copy_num,1)
+        new_colours = new_colours_.repeat(copy_num,1)
+        new_opacity=new_opacity_.repeat(copy_num)
 
         # 将新的split产生的tensor和之前的tensor合并到一起
         self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling, new_rotation)
         # 再把分裂前的tensor删除掉
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(copy_num * selected_pts_mask.sum(), device=self.device, dtype=bool)))
         self.prune_points(prune_filter)
+        # 之前的位置依然保留，但是大小下降
+        self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_, new_rotation_)
+    
+    def set_scale(self,selected_pts_mask,new_scale):
+        # 用于替代之前的片元
+        new_xyz_=self.get_xyz[selected_pts_mask]
+        new_scaling_ = self.scaling_inverse_activation(torch.ones_like(self.get_scaling[selected_pts_mask],device=self.device)*new_scale) # 拷贝后scale下降
+        new_rotation_=self.pre_act_quats[selected_pts_mask]
+        new_colours_ = self.colours[selected_pts_mask]
+        new_opacity_ = self.pre_act_opacities[selected_pts_mask]
+
+        # 再把分裂前的tensor删除掉
+        self.prune_points(selected_pts_mask)
+        # 之前的位置依然保留，但是大小下降
+        self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_, new_rotation_)
 
     def training_setup(self, training_args):
         self.percent_dense = 0.01
@@ -701,17 +722,6 @@ class Gaussians:
 
                 optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors
-    
-    # 计算一段时间，重置透明度，这样就能删掉一部分高斯元
-    def reset_opacity(self,opacity_thresh=0.01):
-        opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*opacity_thresh))
-        optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
-        self.pre_act_opacities = optimizable_tensors["opacity"]
-    
-    def reset_colours(self,colour_thresh=1e-2):
-        colours_new = torch.ones_like(self.get_colour)*colour_thresh
-        optimizable_tensors = self.replace_tensor_to_optimizer(colours_new, "colours")
-        self.colours = optimizable_tensors["colours"]
 
 class Scene:
 

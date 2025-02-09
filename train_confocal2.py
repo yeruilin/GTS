@@ -45,12 +45,16 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
-    path="test_bunny/result3000.ply"
+    # path="test_bunny/result3000.ply"
+    path="temp/result1000.ply"
 
     gaussians = Gaussians(
         init_type="gaussians",load_path=path,
         device=args.device,colour_dim=1
     )
+
+    ## 初始一个比较大的规模然后开始缩小
+    gaussians.pre_act_scales[:,:]=-3.0
 
     radius=gaussians.radius.item()
     object_center=gaussians.center.cpu().numpy()
@@ -81,7 +85,7 @@ def run_training(args):
     opt_param=OptimizationParams()
     opt_param.densification_interval=50
     opt_param.densify_from_iter=1
-    densify_grad_threshold=0.5
+    opt_param.position_lr_init=0.0001
     gaussians.training_setup(opt_param)
     make_trainable(gaussians)
 
@@ -117,9 +121,10 @@ def run_training(args):
         print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
         if itr==100:
-            # 删掉比较大的点
+            # 对于尺寸大的点，需要强行设置比较小的scale
             prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
-            gaussians.prune_points(prune_mask)
+            # gaussians.prune_points(prune_mask)
+            gaussians.set_scale(prune_mask,0.01)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
         if itr%50==0:
@@ -191,7 +196,7 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--num_itrs", default=1000, type=int,
+        "--num_itrs", default=1001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(
