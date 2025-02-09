@@ -38,13 +38,14 @@ def create_renders(args):
     object_center=(object_center[0],object_center[1],object_center[2])
     print(object_center)
 
-    print(torch.min(gaussians.get_colour))
     print(torch.max(gaussians.get_colour))
     print(torch.mean(gaussians.get_colour))
     print(torch.median(gaussians.get_colour))
 
+    print(torch.max(gaussians.get_scaling))
+
     mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    # mask=(gaussians.get_colour[:,0]>0.003).squeeze()
+    # mask=(gaussians.get_colour[:,0]>1e-6).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
     gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
@@ -52,12 +53,11 @@ def create_renders(args):
     gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
     gaussians.means=gaussians.means[mask]
 
-    # save_ply("temp/test.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,1)
-    # exit()
-
     _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
     radius=0.5*torch.max(_range)
     print("radius:",radius)
+
+    print(torch.max(gaussians.get_scaling))
 
     # Creating the scene with the loaded gaussians
     scene = Scene(gaussians)

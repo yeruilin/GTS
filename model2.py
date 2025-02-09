@@ -140,6 +140,7 @@ class Gaussians:
         data["means"] = torch.tensor(ply_gaussians["xyz"])
         data["pre_act_quats"] = torch.tensor(ply_gaussians["rot"])
         data["pre_act_scales"] = torch.tensor(ply_gaussians["scale"])
+        data["pre_act_scales"][:,:]=-3.0
         data["pre_act_opacities"] = torch.tensor(ply_gaussians["opacity"]).squeeze()
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
 
@@ -498,6 +499,25 @@ class Gaussians:
 
         self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling, new_rotation)
 
+    def density_and_split1(self,selected_pts_mask,copy_num=2):
+        stds = self.get_scaling[selected_pts_mask].repeat(copy_num,1)
+        means =torch.zeros((stds.size(0), 3),device=self.device)
+        samples = torch.normal(mean=means, std=stds)
+        rots=quaternion_to_matrix(self.pre_act_quats[selected_pts_mask].view(-1,4)).repeat(copy_num,1,1)
+        # 拷贝后片元中心略有平移
+        new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(copy_num, 1)
+        # 拷贝后scale下降
+        new_scaling = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask].repeat(copy_num,1) / (0.8*copy_num))
+        # 拷贝后旋转、颜色、透明度不变
+        new_rotation = self.pre_act_quats[selected_pts_mask].repeat(copy_num,1)
+        new_colours = self.colours[selected_pts_mask].repeat(copy_num,1)
+        new_opacity = self.pre_act_opacities[selected_pts_mask].repeat(copy_num)
+
+        # 将新的split产生的tensor和之前的tensor合并到一起
+        self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling, new_rotation)
+        # 再把分裂前的tensor删除掉
+        prune_filter = torch.cat((selected_pts_mask, torch.zeros(copy_num * selected_pts_mask.sum(), device=self.device, dtype=bool)))
+        self.prune_points(prune_filter)
 
     def training_setup(self, training_args):
         self.percent_dense = 0.01
@@ -654,8 +674,9 @@ class Gaussians:
         #     big_points_vs = self.max_radii2D > max_screen_size
         #     big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
         #     prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
-        print("Prune number:",torch.sum(prune_mask).item())
-        self.prune_points(prune_mask)
+        
+        # print("Prune number:",torch.sum(prune_mask).item())
+        # self.prune_points(prune_mask)
 
         # tmp_radii = self.tmp_radii
         # self.tmp_radii = None

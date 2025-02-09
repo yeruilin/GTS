@@ -114,34 +114,47 @@ def run_training(args):
         loss.backward()
         loss_list.append(loss.item())
 
+        print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
+
+        if itr==100:
+            # 删掉比较大的点
+            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+            gaussians.prune_points(prune_mask)
+            print(f"prune number: {torch.sum(prune_mask).item()}")
+
         if itr%50==0:
             save_ply(f"temp/splat_result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
             # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
             plot_hist(hist,gt_hist,itr)
 
+            ## 把比较大的片元分成小片元
+            if itr>100:
+                select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+                gaussians.density_and_split1(select_mask,copy_num=2)
+                print(f"split number: {torch.sum(select_mask).item()}")
+
         # print(torch.max(gaussians.pre_act_scales.grad),torch.mean(gaussians.pre_act_scales.grad))
-        print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
 
-        with torch.no_grad():
-            # 裁剪深度不在指定范围的片元
-            if True:
-                # 统计梯度
-                if itr > opt_param.densify_from_iter:
-                    visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
-                    gaussians.add_densification_stats(gaussians.means, visibility_filter)
+        # with torch.no_grad():
+        #     # # 裁剪深度不在指定范围的片元
+        #     if True:
+        #         # 统计梯度
+        #         if itr > opt_param.densify_from_iter:
+        #             visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
+        #             gaussians.add_densification_stats(gaussians.means, visibility_filter)
                     
-                # 一段时间要增加或删减高斯片元
-                if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
-                    print("densify_and_prune")
-                    gaussians.densify_and_prune(
-                        grad_threshold=densify_grad_threshold, 
-                        min_opacity=0.1, 
-                        extent=radius
-                    )
+        #         # 一段时间要增加或删减高斯片元
+        #         if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
+        #             print("densify_and_prune")
+        #             gaussians.densify_and_prune(
+        #                 grad_threshold=densify_grad_threshold, 
+        #                 min_opacity=0.1, 
+        #                 extent=radius
+        #             )
 
-            gaussians.optimizer.step()
-            gaussians.optimizer.zero_grad(set_to_none = True)
-            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
+        gaussians.optimizer.step()
+        gaussians.optimizer.zero_grad(set_to_none = True)
+        print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
 
     end=time.time()
