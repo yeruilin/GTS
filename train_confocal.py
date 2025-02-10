@@ -174,9 +174,9 @@ def run_training(args):
     
     # 删除在最外一圈记录残差的点
     ratio=0.85
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio, True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>gaussians.radius*ratio, True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>gaussians.radius*ratio, True, False).flatten()
     prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
     gaussians.prune_points(prune_mask)
     print(f"prune number: {torch.sum(prune_mask).item()}")

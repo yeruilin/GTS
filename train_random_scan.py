@@ -43,21 +43,21 @@ def run_training(args):
     thresh=0.0 # 颜色阈值
 
     # # 随机初始化
-    radius=0.6 ## random-nt数据参数
-    object_center=(-0.0832,0.0453,1.2013)
-    # radius=0.8 ## random-statue数据参数
-    # object_center=(0,0,0.9)
+    # radius=[0.6,0.6,0.4] ## random-nt数据参数
+    # object_center=(0.05,0,1.35)
+    radius=[0.7,0.9,0.4] ## random-statue数据参数
+    object_center=(0,0,1.1)
     # thresh=0.017
-    # radius=0.6 ## random-bunny数据参数
+    # radius=[0.6,0.6,0.6] ## random-bunny数据参数
     # object_center=(0,0,1.3)
     
     gaussians = Gaussians(
-        num_points=20000, init_type="random",
+        num_points=30000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
 
-    fov_radius=radius
+    fov_radius=gaussians.radius
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -70,7 +70,7 @@ def run_training(args):
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
-    print("radius:",radius)
+    print("radius:",gaussians.radius)
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
     print("width:",dataset.width)
@@ -169,10 +169,10 @@ def run_training(args):
         #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
     
     # 删除在最外一圈记录残差的点
-    ratio=0.85
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
+    ratio=0.8
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio, True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio, True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio, True, False).flatten()
     prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
     gaussians.prune_points(prune_mask)
     print(f"prune number: {torch.sum(prune_mask).item()}")
