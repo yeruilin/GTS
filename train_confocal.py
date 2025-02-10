@@ -45,11 +45,11 @@ def run_training(args):
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
     # object_center=(0.0,0.0,1.3)
-    radius=0.35 ## mannequin数据的参数
-    object_center=(0.0,0.0,0.52)
+    # radius=0.35 ## mannequin数据的参数
+    # object_center=(0.0,0.0,0.52)
     # thresh=0.0048
-    # radius=0.25 ## teapot数据的参数
-    # object_center=(0.0821,0.2270,1.1992)
+    radius=0.3 ## teapot数据的参数
+    object_center=(0.0821,0.2270,1.1992)
     # radius=0.6 ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # radius=0.6 ## fk-dragon数据参数
