@@ -46,7 +46,7 @@ def run_training(args):
         os.makedirs(args.out_path, exist_ok=True)
 
     # path="test_bunny/result3000.ply"
-    path="temp/result1000.ply"
+    path="temp/result1500.ply"
 
     gaussians = Gaussians(
         init_type="gaussians",load_path=path,
@@ -54,7 +54,7 @@ def run_training(args):
     )
 
     ## 初始一个比较大的规模然后开始缩小
-    gaussians.pre_act_scales[:,:]=-3.0
+    gaussians.pre_act_scales[:,:]=-4.6
 
     radius=gaussians.radius.item()
     object_center=gaussians.center.cpu().numpy()
@@ -123,8 +123,8 @@ def run_training(args):
         if itr==100:
             # 对于尺寸大的点，需要强行设置比较小的scale
             prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
-            # gaussians.prune_points(prune_mask)
-            gaussians.set_scale(prune_mask,0.01)
+            gaussians.prune_points(prune_mask)
+            # gaussians.set_scale(prune_mask,0.01)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
         if itr%50==0:

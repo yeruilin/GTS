@@ -47,13 +47,13 @@ def run_training(args):
     # object_center=(0.0,0.0,1.3)
     # radius=0.25 ## mannequin数据的参数
     # object_center=(0.0,0.0,0.52)
-    # thresh=0.003
+    # thresh=0.0048
     # radius=0.25 ## teapot数据的参数
     # object_center=(0.0821,0.2270,1.1992)
-    radius=0.6 ## bunny的参数
-    object_center=(0.0037,0.1018,0.8335)
-    # radius=0.6 ## fk-dragon数据参数
-    # object_center=(0,0,1.3)
+    # radius=0.6 ## bunny的参数
+    # object_center=(0.0037,0.1018,0.8335)
+    radius=0.6 ## fk-dragon数据参数
+    object_center=(0,0,1.3)
     
     gaussians = Gaussians(
         num_points=20000, init_type="random",
@@ -140,12 +140,21 @@ def run_training(args):
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
         
         # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        if itr==4000:
+        if itr==1000:
             # 删除小于均值的位置
             if thresh==0:
                 prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
             else:
                 prune_mask=torch.where(gaussians.get_colour<=thresh, True, False).flatten()
+            
+            # 删除在最外一圈记录残差的点
+            ratio=0.85
+            prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
+            prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
+            prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
+            prune_mask_=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+            prune_mask=torch.logical_or(prune_mask,prune_mask_)
+
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
@@ -221,7 +230,16 @@ def run_training(args):
 
     end=time.time()
     print("Training Completed. Training time:", end-start)
-    # Saving Gaussian primitives (.ply)
+    
+    # 删除在最外一圈记录残差的点
+    offset=0.1
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius-offset, True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius-offset, True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius-offset, True, False).flatten()
+    prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+    gaussians.prune_points(prune_mask)
+    print(f"prune number: {torch.sum(prune_mask).item()}")
+
     save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
     print("Save ply!")
 

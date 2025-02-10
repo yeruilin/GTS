@@ -38,14 +38,15 @@ def create_renders(args):
     object_center=(object_center[0],object_center[1],object_center[2])
     print(object_center)
 
-    print(torch.max(gaussians.get_colour))
-    print(torch.mean(gaussians.get_colour))
-    print(torch.median(gaussians.get_colour))
+    print("colour max:",torch.max(gaussians.get_colour))
+    print("colour mean:",torch.mean(gaussians.get_colour))
+    print("colour median:",torch.median(gaussians.get_colour))
 
     print(torch.max(gaussians.get_scaling))
 
-    mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    # mask=(gaussians.get_colour[:,0]>1e-7).squeeze()
+    mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
+    mask=(gaussians.get_colour[:,0]>0.02).squeeze()
+    ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
     gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
@@ -68,12 +69,12 @@ def create_renders(args):
 
     scene = Scene(gaussians)
 
-    bg_colour=(1.0, 1.0, 1.0) # 背景颜色
+    bg_colour=(0.0, 0.0, 0.0) # 背景颜色
 
     imgs = []
     for i in tqdm(range(num_views), desc="Rendering"):
         dist = gaussians.radius.item()*8
-        R, T = look_at_view_transform(dist = dist, azim=azims[i], elev=0.0, up=((0, 1, 0),))
+        R, T = look_at_view_transform(dist = dist, azim=1.0, elev=azims[i], up=((0, 1, 0),))
         camera = PerspectiveCameras(
             focal_length=5.0 * dim/2.0, in_ndc=False,
             principal_point=((dim/2, dim/2),),
@@ -89,7 +90,7 @@ def create_renders(args):
         mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
         depth = depth.detach().cpu().numpy()
 
-        img = np.clip(img, 0.0, 1.0)
+        img=(img-np.min(img))/(np.max(img)-np.min(img))
         img = (img * 255.0).astype(np.uint8)
         mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 
@@ -101,6 +102,10 @@ def create_renders(args):
         img=np.flipud(np.fliplr(img))
         coloured_depth=np.flipud(np.fliplr(coloured_depth))
         mask=np.flipud(np.fliplr(mask))
+
+        img=np.rot90(img)
+        coloured_depth=np.rot90(coloured_depth)
+        mask=np.rot90(mask)
 
         concat = np.concatenate([img, coloured_depth, mask], axis = 1)
         resized = Image.fromarray(concat).resize((256*3, 256))

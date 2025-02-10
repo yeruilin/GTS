@@ -19,11 +19,11 @@ class OptimizationParams:
         self.iterations = 30000
         self.position_lr_init = 0
         self.position_lr_final = 0
-        self.position_lr_delay_mult = 0.01
+        self.position_lr_delay_mult = 0.001
         self.position_lr_max_steps = 30000
         self.feature_lr = 0.0025
         self.opacity_lr = 0.025
-        self.scaling_lr = 0.01
+        self.scaling_lr = 0.001
         self.rotation_lr = 0.001
         self.exposure_lr_init = 0.01
         self.exposure_lr_final = 0.001
@@ -360,7 +360,7 @@ def load_gaussians_from_ply(path):
     shs = shs.astype(np.float32)
 
     dc_vals = shs[:, :3]
-    dc_colours = np.maximum(dc_vals * SH_C0 + 0.5, np.zeros_like(dc_vals))
+    # dc_colours = np.maximum(dc_vals * SH_C0 + 0.5, np.zeros_like(dc_vals))
 
     output = {
         "xyz": xyz, "rot": rots, "scale": scales,

@@ -204,7 +204,7 @@ class Gaussians:
         self.radius=radius
         means_=torch.rand((num_points, 3), dtype=torch.float32) # (N, 3)
         data["means"]= radius*(means_-0.5)*2
-        data["means"][:,2]=zradius*(means_[:,2]-0.5)*2
+        # data["means"][:,2]=zradius*(means_[:,2]-0.5)*2
         data["means"]+=self.center.view(1,3)
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
@@ -498,7 +498,7 @@ class Gaussians:
 
         self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling, new_rotation)
 
-    def density_and_split1(self,selected_pts_mask,copy_num=2):
+    def density_and_split1(self,selected_pts_mask,copy_num=2,save_old=True):
         stds = self.get_scaling[selected_pts_mask].repeat(copy_num,1)
         means =torch.zeros((stds.size(0), 3),device=self.device)
         samples = torch.normal(mean=means, std=stds)
@@ -524,8 +524,10 @@ class Gaussians:
         # 再把分裂前的tensor删除掉
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(copy_num * selected_pts_mask.sum(), device=self.device, dtype=bool)))
         self.prune_points(prune_filter)
+        
         # 之前的位置依然保留，但是大小下降
-        self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_, new_rotation_)
+        if save_old:
+            self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_, new_rotation_)
     
     def set_scale(self,selected_pts_mask,new_scale):
         # 用于替代之前的片元
