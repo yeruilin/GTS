@@ -481,9 +481,9 @@ class Gaussians:
     def get_colour(self):
         return self.colours**2
     
-    def densify_and_clone1(self,copy_num=2):
+    def densify_and_clone1(self,copy_num=2,std_multiple=1):
         # 找到满足条件的片元，然后复制两份
-        stds = 3*self.get_scaling.repeat(copy_num,1)
+        stds = std_multiple*self.get_scaling.repeat(copy_num,1)
         means =torch.zeros((stds.size(0), 3),device=self.device)
         samples = torch.normal(mean=means, std=stds)
         rots=quaternion_to_matrix(self.pre_act_quats.view(-1,4)).repeat(copy_num,1,1)
