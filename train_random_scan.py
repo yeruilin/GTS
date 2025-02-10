@@ -45,11 +45,11 @@ def run_training(args):
     # # 随机初始化
     # radius=0.6 ## random-nt数据参数
     # object_center=(-0.0832,0.0453,1.2013)
-    # radius=0.6 ## random-statue数据参数
-    # object_center=(0,0,0.9)
+    radius=0.8 ## random-statue数据参数
+    object_center=(0,0,0.9)
     # thresh=0.017
-    radius=0.6 ## random-bunny数据参数
-    object_center=(0,0,1.3)
+    # radius=0.6 ## random-bunny数据参数
+    # object_center=(0,0,1.3)
     
     gaussians = Gaussians(
         num_points=20000, init_type="random",
@@ -151,7 +151,7 @@ def run_training(args):
                 prune_mask=torch.where(gaussians.get_colour<=thresh, True, False).flatten()
             
             # 删除在最外一圈记录残差的点
-            ratio=0.9
+            ratio=0.85
             prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
             prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
             prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()

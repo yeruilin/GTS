@@ -45,7 +45,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>0.02).squeeze()
+    mask=(gaussians.get_colour[:,0]>0.005).squeeze()
     ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
@@ -74,7 +74,7 @@ def create_renders(args):
     imgs = []
     for i in tqdm(range(num_views), desc="Rendering"):
         dist = gaussians.radius.item()*8
-        R, T = look_at_view_transform(dist = dist, azim=1.0, elev=azims[i], up=((0, 1, 0),))
+        R, T = look_at_view_transform(dist = dist, azim=azims[i], elev=0.0, up=((0, 1, 0),))
         camera = PerspectiveCameras(
             focal_length=5.0 * dim/2.0, in_ndc=False,
             principal_point=((dim/2, dim/2),),
@@ -103,9 +103,10 @@ def create_renders(args):
         coloured_depth=np.flipud(np.fliplr(coloured_depth))
         mask=np.flipud(np.fliplr(mask))
 
-        img=np.rot90(img)
-        coloured_depth=np.rot90(coloured_depth)
-        mask=np.rot90(mask)
+        # 旋转90°
+        # img=np.rot90(img)
+        # coloured_depth=np.rot90(coloured_depth)
+        # mask=np.rot90(mask)
 
         concat = np.concatenate([img, coloured_depth, mask], axis = 1)
         resized = Image.fromarray(concat).resize((256*3, 256))
