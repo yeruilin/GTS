@@ -195,16 +195,21 @@ class Gaussians:
 
         return data
 
-    def _load_random(self, num_points: int,radius=1.0,center=(0,0,0),zradius=0.2):
+    def _load_random(self, num_points: int,radius,center=(0,0,0),zradius=0.2):
 
         data = dict()
 
         # Initializing means randomly
         self.center=torch.Tensor(center)
-        self.radius=radius
         means_=torch.rand((num_points, 3), dtype=torch.float32) # (N, 3)
+
+        if type(radius)==type([]):
+            self.radius=max(radius)
+            radius=torch.tensor(radius).view(1,3)
+        else:
+            self.radius=radius
+            
         data["means"]= radius*(means_-0.5)*2
-        # data["means"][:,2]=zradius*(means_[:,2]-0.5)*2
         data["means"]+=self.center.view(1,3)
 
         # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,

@@ -34,10 +34,6 @@ def create_renders(args):
 
     filename=args.data_path.split("/")[-1][:-4]
 
-    object_center=gaussians.means.mean(dim=0, keepdims=True).flatten().detach().cpu().numpy()
-    object_center=(object_center[0],object_center[1],object_center[2])
-    print(object_center)
-
     print("colour max:",torch.max(gaussians.get_colour))
     print("colour mean:",torch.mean(gaussians.get_colour))
     print("colour median:",torch.median(gaussians.get_colour))
@@ -45,7 +41,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>0.008).squeeze()
+    mask=(gaussians.get_colour[:,0]>0.025).squeeze()
     ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
@@ -53,6 +49,10 @@ def create_renders(args):
     gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
     gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
     gaussians.means=gaussians.means[mask]
+
+    object_center=gaussians.means.mean(dim=0, keepdims=True).flatten().detach().cpu().numpy()
+    object_center=(object_center[0],object_center[1],object_center[2])
+    print(object_center)
 
     _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
     radius=0.5*torch.max(_range)

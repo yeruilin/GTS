@@ -48,12 +48,12 @@ def run_training(args):
     # radius=0.35 ## mannequin数据的参数
     # object_center=(0.0,0.0,0.52)
     # thresh=0.0048
-    radius=0.3 ## teapot数据的参数
-    object_center=(0.0821,0.2270,1.1992)
+    # radius=0.3 ## teapot数据的参数
+    # object_center=(0.0821,0.2270,1.1992)
     # radius=0.6 ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
-    # radius=0.6 ## fk-dragon数据参数
-    # object_center=(0,0,1.3)
+    radius=[0.85,0.85,0.4] ## fk-dragon数据参数
+    object_center=(0.1,-0.15,1.45)
     
     gaussians = Gaussians(
         num_points=30000, init_type="random",
@@ -61,7 +61,7 @@ def run_training(args):
         colour_dim=1,extent=radius,center=object_center
     )
 
-    fov_radius=1.2*radius
+    fov_radius=1.2*gaussians.radius
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -74,7 +74,7 @@ def run_training(args):
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
-    print("radius:",radius)
+    print("radius:",gaussians.radius)
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
     print("width:",dataset.width)
