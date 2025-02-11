@@ -41,17 +41,17 @@ def run_training(args):
         os.makedirs(args.out_path, exist_ok=True)
 
     # # 随机初始化
-    radius=0.2 ## K的参数
-    object_center=(0,0,0.3)
-    # radius=0.6 ## bunny的参数
+    radius=[0.2,0.2,0.2] ## K的参数
+    object_center=(0,0,0.26)
+    # radius=[0.6,0.6,0.6] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     gaussians = Gaussians(
-        num_points=15000, init_type="random",
+        num_points=30000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
 
-    fov_radius=1.2*radius
+    fov_radius=gaussians.radius
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -79,7 +79,8 @@ def run_training(args):
     ### 开始训练
     # 阶段一：清掉无用位置的点
     opt_param=OptimizationParams()
-    gaussians.training_setup1(opt_param)
+    gaussians.training_setup(opt_param)
+    make_trainable(gaussians)
 
     loss_list=[]
 
@@ -99,140 +100,82 @@ def run_training(args):
             current_camera=get_camera(scan_point,object_center,fov_radius,img_size,args.device)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_nonconf_hist1(current_camera,laser_camera,bin_resolution,nums_bin)
+            hist= scene.render_nonconf_hist2(current_camera,laser_camera,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
         loss=loss/sample_num
         loss.backward()
         loss_list.append(loss.item())
-
-        if itr%50==0:
-            # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
-            plot_hist(hist,gt_hist,itr)
             
         with torch.no_grad():
             gaussians.optimizer.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr==200:
-            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
-            gaussians.prune_points1(prune_mask)
-            print(f"prune number: {torch.sum(prune_mask).item()}")
+        if itr%10==0:  
+            plot_hist(hist,gt_hist,itr)   
 
-            gaussians.densify_and_clone1(copy_num=5)
-        
-        if itr%500==0:
-            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
-            gaussians.prune_points1(prune_mask)
+        if itr%50==0:
+            # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
+            # 防止出现太大的片元
+            select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+            gaussians.density_and_split1(select_mask,copy_num=1)
+            print(f"split number: {torch.sum(select_mask).item()}")
+
+            # 直接删除太大的片元
+            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+            gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
             save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-        
-        # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        if itr==4000:
-            # 删除小于均值的位置
-            prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
-            gaussians.prune_points1(prune_mask)
+
+        if itr==200 or itr%500==0:
+            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
+            gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
-
-            # 剩下的点全都进行拷贝
-            gaussians.densify_and_clone1(copy_num=2)
-            print(f"Gaussian number left: {gaussians.means.shape[0]}")
-
-    # # 阶段二：考虑互相遮挡的问题
-    # opt_param=OptimizationParams()
-    # opt_param.densification_interval=50
-    # opt_param.densify_from_iter=1
-    # densify_grad_threshold=0.005
-    # gaussians.training_setup(opt_param)
-
-    # make_trainable(gaussians)
-    # loss_list=[]
-
-    # # Training loop
-    # for itr in range(depth_prune_itr+1,args.num_itrs):
-    #     gaussians.update_learning_rate(itr) # 更新学习率
-
-    #     loss=0
-    #     sample_num=16
-
-    #     for iii in range(sample_num):
-    #         try:
-    #             data = next(train_itr)
-    #         except StopIteration:
-    #             train_itr = iter(train_loader)
-    #             data = next(train_itr)
-    #         scan_point=data["point"]
-    #         gt_hist=data["hist"].reshape(-1)
-    #         z1,z2=data["z_range"]
-    #         z1=z1.to(args.device)
-    #         z2=z2.to(args.device)
-    #         dist=math.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
-    #         fov=2*math.asin(fov_radius/dist)
-    #         R, T = look_at_view_transform(eye=(scan_point,),at=(object_center,),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
-    #         current_camera = FoVPerspectiveCameras(
-    #             znear=0.1,zfar=10.0,
-    #             fov=fov,degrees=False, # radian
-    #             R=R, T=T
-    #         ).to(args.device)
-    #         current_camera.image_size=(img_size,)
-
-    #         # Rendering histogram using gaussian splatting
-    #         hist,z_vals= scene.render_conf_hist(current_camera,bin_resolution,nums_bin,args.gaussians_per_splat,img_size,is_train=True)
-
-    #         if True: # 最开始和reset opacity并删除无效片元之后这样拟合效果更好
-    #             loss+=torch.mean((hist[start_index:end_index]-gt_hist[start_index:end_index]).abs())
-    #         else:
-    #             loss+=wasserstein_distance(hist,gt_hist,indices)
-    #             densify_grad_threshold=0.5
         
-    #     loss=loss/sample_num
-    #     loss.backward()
-    #     loss_list.append(loss.item())
+        if itr==200:
+            gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
+            
+        if itr==500:
+            gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
+        
+        # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
+        # if itr==1000:
+        #     # 删除小于均值的位置
+        #     if thresh==0:
+        #         prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
+        #     else:
+        #         prune_mask=torch.where(gaussians.get_colour<=thresh, True, False).flatten()
+            
+        #     # 删除在最外一圈记录残差的点
+        #     ratio=0.85
+        #     prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
+        #     prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
+        #     prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
+        #     prune_mask_=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+        #     prune_mask=torch.logical_or(prune_mask,prune_mask_)
 
-    #     if itr%50==0:
-    #         save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-    #         # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
-    #         plot_hist(hist,gt_hist,itr)
+        #     gaussians.prune_points(prune_mask)
+        #     print(f"prune number: {torch.sum(prune_mask).item()}")
 
-    #     print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
-
-    #     with torch.no_grad():
-    #         # 裁剪深度不在指定范围的片元
-    #         if True:
-    #             # 统计梯度
-    #             if itr > opt_param.densify_from_iter:
-    #                 visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
-    #                 gaussians.add_densification_stats(gaussians.means, visibility_filter)
-                    
-    #             # 一段时间要增加或删减高斯片元
-    #             if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
-    #                 print("densify_and_prune")
-    #                 gaussians.densify_and_prune(
-    #                     grad_threshold=densify_grad_threshold, 
-    #                     min_opacity=0.1, 
-    #                     extent=radius
-    #                 )
-    #                 # save_ply(f"temp/result{itr}_prune.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
-
-    #             # 一段时间要重置一次透明度，这样可以消除floaters悬浮物
-    #             if itr % 500 == 0:
-    #                 print("reset_colours")
-    #                 # gaussians.reset_colours()
-    #                 gaussians.reset_opacity(0.1) # 对L1 loss来说效果不好，因为没有足够的梯度让它拟合出来
-
-    #                 densify_grad_threshold=0.005
-
-    #         gaussians.optimizer.step()
-    #         gaussians.optimizer.zero_grad(set_to_none = True)
-    #         print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
-
+        #     # 剩下的点全都进行拷贝
+        #     gaussians.densify_and_clone1(copy_num=2)
+        #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
+    
+    # 删除在最外一圈记录残差的点
+    ratio=0.85
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio, True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio, True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio, True, False).flatten()
+    prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+    gaussians.prune_points(prune_mask)
+    print(f"prune number: {torch.sum(prune_mask).item()}")
 
     end=time.time()
     print("Training Completed. Training time:", end-start)
-    # Saving Gaussian primitives (.ply)
+
     save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
     print("Save ply!")
 

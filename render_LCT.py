@@ -41,7 +41,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>0.02).squeeze()
+    # mask=(gaussians.get_colour[:,0]>0.02).squeeze()
     ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
@@ -101,10 +101,10 @@ def create_renders(args):
         depth = depth[:, :, 0].astype(np.float32)  # (H, W) # 有效的depth在5-7之间，因此可以在这个范围归一化配置颜色
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
-        # ## 旋转180°
-        # img=np.flipud(np.fliplr(img))
-        # coloured_depth=np.flipud(np.fliplr(coloured_depth))
-        # mask=np.flipud(np.fliplr(mask))
+        ## 旋转180°
+        img=np.flipud(np.fliplr(img))
+        coloured_depth=np.flipud(np.fliplr(coloured_depth))
+        mask=np.flipud(np.fliplr(mask))
 
         # ## 旋转90°
         # img=np.rot90(img)

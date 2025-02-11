@@ -1218,7 +1218,7 @@ class Scene:
 
         intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten()
 
-        intensity=intensity/(z_vals1*z_vals1*z_vals2*z_vals2)
+        intensity=intensity/(z_vals1*z_vals2)
 
         indices=((z_vals1+z_vals2)/bin_resolution).long() # 计算索引
         indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
@@ -1226,6 +1226,39 @@ class Scene:
         hist=torch.zeros((num_bins,),dtype=torch.float32,device=detect_camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
         # 利用scatter_add将强度值叠加到对应bin
         hist.scatter_add_(0, indices,intensity)
+
+        return hist
+
+    # 利用极坐标的形式计算histogram
+    def render_nonconf_hist2(self, detect_camera,laser_camera,bin_resolution,num_bins):
+        # 计算强度
+        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
+
+        # 计算片元中心的深度
+        a = self.compute_depth_values(detect_camera).unsqueeze(1) # (N,1)
+        b = self.compute_depth_values(laser_camera).unsqueeze(1) # (N,1)
+        r0=a+b # (N,1)
+
+        # print(torch.max(a))
+        # print(torch.min(a))
+        # print(torch.max(b))
+        # print(torch.min(b))
+
+        r_=bin_resolution*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
+        r=r_.view(1,num_bins) #(1,M)
+
+        sigma=math.sqrt(2.0)*torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
+        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
+
+        # 每个深度的概率
+        pr=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2) # 概率密度,[N,M]
+        pr=torch.clip(pr,0,1)
+
+        hist=intensity.unsqueeze(1)/((a*b)) # (N,1)
+        hist=hist*pr # (N,M)
+        hist=torch.sum(hist,dim=0).flatten()
+
+        hist[0:100]=0
 
         return hist
 
