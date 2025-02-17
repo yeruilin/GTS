@@ -40,18 +40,19 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
     
-    thresh=0.0 # 颜色阈值
+    scale=0.005 # 默认大小
 
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
     # object_center=(0.0,0.0,1.3)
-    radius=[0.4,0.4,0.2] ## mannequin数据的参数
-    object_center=(0.0,0.0,0.55)
-    # thresh=0.0048
-    # radius=0.3 ## teapot数据的参数
+    # radius=[0.4,0.4,0.2] ## mannequin数据的参数
+    # object_center=(0.0,0.0,0.55)
+    # scale=0.005
+    # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # object_center=(0.0821,0.2270,1.1992)
-    # radius=0.6 ## bunny的参数
-    # object_center=(0.0037,0.1018,0.8335)
+    radius=[0.5,0.5,0.4] ## bunny的参数
+    object_center=(0.0037,0.1018,0.8335)
+    scale=0.008
     # radius=[0.85,0.85,0.4] ## fk-dragon数据参数
     # object_center=(0.1,-0.15,1.45)
 
@@ -64,7 +65,7 @@ def run_training(args):
     gaussians = Gaussians(
         num_points=40000, init_type="random",
         device=args.device, isotropic=True,
-        colour_dim=1,extent=radius,center=object_center,scale=0.005
+        colour_dim=1,extent=radius,center=object_center,scale=scale
     )
 
     fov_radius=1.2*gaussians.radius
