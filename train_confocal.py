@@ -41,6 +41,7 @@ def run_training(args):
         os.makedirs(args.out_path, exist_ok=True)
     
     scale=0.005 # 默认大小
+    ratio=[0.85,0.85,0.85]
 
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
@@ -50,11 +51,12 @@ def run_training(args):
     # scale=0.005
     # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # object_center=(0.0821,0.2270,1.1992)
-    radius=[0.5,0.5,0.4] ## bunny的参数
-    object_center=(0.0037,0.1018,0.8335)
-    scale=0.008
-    # radius=[0.85,0.85,0.4] ## fk-dragon数据参数
-    # object_center=(0.1,-0.15,1.45)
+    # radius=[0.5,0.5,0.4] ## bunny的参数
+    # object_center=(0.0037,0.1018,0.8335)
+    # scale=0.008
+    radius=[0.95,0.95,0.4] ## fk-dragon数据参数
+    object_center=(-0.25,0.1,1.45)
+    ratio=[0.8,0.8,0.4]
 
     dataset= NLOSDataset(args.data_path,device=args.device)
     
@@ -175,10 +177,9 @@ def run_training(args):
         #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
     
     # 删除在最外一圈记录残差的点
-    ratio=0.85
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio, True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>gaussians.radius*ratio, True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>gaussians.radius*ratio, True, False).flatten()
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio[0], True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>gaussians.radius*ratio[1], True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>gaussians.radius*ratio[2], True, False).flatten()
     prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
     gaussians.prune_points(prune_mask)
     print(f"prune number: {torch.sum(prune_mask).item()}")
