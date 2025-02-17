@@ -53,7 +53,7 @@ class Gaussians:
     def __init__(
         self, init_type: str, device: str, load_path: Optional[str] = None,
         num_points: Optional[int] = None, isotropic: Optional[bool] = None,
-        colour_dim=3,extent=1.0,center=(0,0,0)
+        colour_dim=3,extent=1.0,center=(0,0,0),scale=0.01
     ):
 
         self.device = device
@@ -104,7 +104,7 @@ class Gaussians:
             else:
                 self.is_isotropic = isotropic
 
-            data = self._load_random(num_points,extent,center)
+            data = self._load_random(num_points,extent,center,scale)
 
         else:
             raise ValueError(f"Invalid init_type: {init_type}")
@@ -195,7 +195,7 @@ class Gaussians:
 
         return data
 
-    def _load_random(self, num_points: int,radius,center=(0,0,0),zradius=0.2):
+    def _load_random(self, num_points,radius,center=(0,0,0),scale=0.01):
 
         data = dict()
 
@@ -228,12 +228,59 @@ class Gaussians:
         # data["pre_act_scales"] = torch.log((torch.rand((num_points, 1), dtype=torch.float32) + 1e-6) * 0.01)
         # Initializing scales using the mean distance of each point to its 50 nearest points
         dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
-        data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
+        # data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
+        data["pre_act_scales"] = torch.log(torch.ones((num_points,1),dtype=torch.float32)*scale)  # (N, 1)
 
         if not self.is_isotropic:
             data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
 
         return data
+
+    # def _load_voxel(self, step,radius,center=(0,0,0)):
+
+    #     data = dict()
+
+    #     # Initializing means randomly
+    #     self.center=torch.Tensor(center)
+
+    #     if type(radius)==type([]):
+    #         self.radius=max(radius)
+    #     else:
+    #         self.radius=radius
+    #         radius=[radius,radius,radius]
+            
+    #     x = torch.arange(-radius[0], radius[0], step[0])
+    #     y = torch.arange(-radius[1], radius[1], step[1])
+    #     z = torch.arange(-radius[2], radius[2], step[2])
+    #     grid_x, grid_y, grid_z = torch.meshgrid(x, y, z, indexing='ij') # 生成网格
+
+    #     data["means"] = torch.stack([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()], dim=-1) # 展平并组合成 (N, 3) 的点云
+    #     data["means"]+=self.center.view(1,3)
+
+    #     num_points=data["means"].shape[0]
+
+    #     # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
+    #     # we will have a opacity value close to (but less than) 1.0
+    #     data["pre_act_opacities"] = 8.0 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
+
+    #     # Initializing colors randomly
+    #     data["colours"] = 0.1*torch.ones((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
+
+    #     # Initializing quaternions to be the identity quaternion
+    #     quats = torch.zeros((num_points, 4), dtype=torch.float32)  # (N, 4)
+    #     quats[:, 0] = 1.0
+    #     data["pre_act_quats"] = quats  # (N, 4)
+
+    #     # Initializing scales randomly
+    #     # data["pre_act_scales"] = torch.log((torch.rand((num_points, 1), dtype=torch.float32) + 1e-6) * 0.01)
+    #     # Initializing scales using the mean distance of each point to its 50 nearest points
+    #     scale_=min(step)
+    #     data["pre_act_scales"] = torch.log(torch.ones((num_points,1),dtype=torch.float32)*scale_)  # (N, 1)
+
+    #     if not self.is_isotropic:
+    #         data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
+
+    #     return data
 
     def _compute_jacobian(self, means_3D: torch.Tensor, camera, img_size: Tuple):
 
@@ -494,6 +541,13 @@ class Gaussians:
         rots=quaternion_to_matrix(self.pre_act_quats.view(-1,4)).repeat(copy_num,1,1)
         # 拷贝后片元中心略有平移
         new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz.repeat(copy_num, 1)
+
+        # # 找到最近的几个点
+        # dists, idxs, _ = knn_points(self.get_xyz.unsqueeze(0), self.get_xyz.unsqueeze(0), K=copy_num)
+        # neighbors = self.get_xyz[idxs.squeeze(0)]  # (N, k, 3)
+        # trisection_points = (2 * self.get_xyz.unsqueeze(1) + neighbors) / 3  # (N, k, 3) # 计算靠近本侧的三等分点
+        # new_xyz=trisection_points.view(-1,3)
+
         # 拷贝后scale下降
         new_scaling = self.scaling_inverse_activation(self.get_scaling.repeat(copy_num,1) / (0.8*copy_num))
         # 拷贝后旋转、颜色、透明度不变

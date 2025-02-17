@@ -14,6 +14,10 @@ from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras,
 import math
 import matplotlib.pyplot as plt
 
+from scipy.ndimage import uniform_filter,convolve,gaussian_filter
+
+import cv2
+
 def create_renders(args):
 
     dim = args.img_dim
@@ -41,7 +45,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    # mask=(gaussians.get_colour[:,0]>0.02).squeeze()
+    mask=(gaussians.get_colour[:,0]>0.0035).squeeze()
     ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
@@ -73,6 +77,7 @@ def create_renders(args):
     scene = Scene(gaussians)
 
     bg_colour=(0.0, 0.0, 0.0) # 背景颜色
+    use_filter=False # 后处理
 
     imgs = []
     for i in tqdm(range(num_views), desc="Rendering"):
@@ -93,12 +98,19 @@ def create_renders(args):
         mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
         depth = depth.detach().cpu().numpy()
 
+        if use_filter:
+            img = cv2.medianBlur(img, 3)
+            img = gaussian_filter(img, sigma=1.0, truncate=2.5)
+
         img=(img-np.min(img))/(np.max(img)-np.min(img))
         img = (img * 255.0).astype(np.uint8)
         mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 
         # Colouring the depth map
         depth = depth[:, :, 0].astype(np.float32)  # (H, W) # 有效的depth在5-7之间，因此可以在这个范围归一化配置颜色
+        if use_filter:
+            depth = cv2.medianBlur(depth, 3)
+            depth = gaussian_filter(depth, sigma=1.0, truncate=2.5)
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
         ## 旋转180°
