@@ -7,9 +7,9 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist,get_camera
+from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist
 
-from dataset import RandomScanDataset,NLOSDataset
+from dataset import NLOSDataset
 import time
 import scipy
 import matplotlib.pyplot as plt
@@ -60,17 +60,14 @@ def run_training(args):
 
     dataset= NLOSDataset(args.data_path,device=args.device)
     
-    img_size=(dataset.N,dataset.N) # 渲染图片大小
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
     
     gaussians = Gaussians(
-        num_points=40000, init_type="random",
+        num_points=10000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
-
-    fov_radius=1.2*gaussians.radius
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
@@ -110,10 +107,8 @@ def run_training(args):
             scan_point=data["point"]
             gt_hist=data["hist"].reshape(-1)
 
-            current_camera=get_camera(scan_point,object_center,fov_radius,img_size,args.device)
-
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist2(current_camera,bin_resolution,nums_bin)
+            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         

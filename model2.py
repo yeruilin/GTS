@@ -1185,35 +1185,14 @@ class Scene:
         gaussian_dirs = means_3D-center  # (N, 3)
         gaussian_dirs=torch.nn.functional.normalize(gaussian_dirs, p=2, dim=1)
         return gaussian_dirs
-
-    def render_conf_hist1(self, camera,bin_resolution,num_bins):
-        z_vals = self.compute_depth_values(camera) # (N,)
-
-        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten()
-
-        intensity=intensity/(z_vals**2)
-
-        indices_float=z_vals*2/bin_resolution # 计算索引
-        indices_float = torch.clamp(indices_float, 0, num_bins - 1).flatten()  # 防止索引超出范围
-
-        # 强度按照距离分配到两个bin上
-        indices=torch.cat([indices_float.long(),indices_float.long()+1],dim=0)
-        weight=indices_float-indices_float.long()
-        intensity=torch.cat([intensity*(1-weight),intensity*weight],dim=0)
-
-        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
-        # 利用scatter_add将强度值叠加到对应bin
-        hist.scatter_add_(0, indices,intensity)
-
-        return hist
     
     # 利用极坐标的形式计算histogram
-    def render_conf_hist2(self, camera,bin_resolution,num_bins):
+    def render_conf_hist(self, scan_point,bin_resolution,num_bins):
         # 计算强度
         intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
 
-        # 计算片元中心的深度
-        r0 = self.compute_depth_values(camera).unsqueeze(1) # (N,1)
+        # 计算片元中心的深度:scan_point is [1,3]
+        r0 = torch.norm(self.gaussians.means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
 
         r_=bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
         r=r_.view(1,num_bins) #(1,M)
@@ -1234,69 +1213,21 @@ class Scene:
 
         return hist
 
-    def render_conf_hist(
-        self, camera,bin_resolution,num_bins,
-        per_splat: int = -1, img_size: Tuple = (128, 128),is_train=False # 是否进入训练模式（强度-深度解耦）
-    ):
-        intensity, depth=self.render(camera,per_splat,img_size)
-        if intensity.shape[-1]==3:
-            intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
-
-        select_mask = torch.where(depth > 0.1, True, False) # 深度阈值应该可以调整
-        hist_inten=intensity[select_mask]/(depth[select_mask]**2) # 形状是[select_num]
-        indices=(depth[select_mask]*2/bin_resolution).long() # 计算索引
-        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
-
-        # print(hist_inten.shape)
-
-        # 没法传递梯度
-        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
-        # 利用scatter_add将强度值叠加到对应bin
-        if is_train:
-            hist.scatter_add_(0, indices,intensity[select_mask].flatten())
-        else:
-            hist.scatter_add_(0, indices, hist_inten.flatten())
-
-        # with torch.no_grad():
-        #     img = intensity.detach().cpu().numpy()
-        #     depth = depth.detach().cpu().numpy()
-        #     depth = depth[:, :, 0].astype(np.float32)
-        #     histtt=hist.detach().cpu().numpy()
-        #     scipy.io.savemat("temp/depth.mat",{"img":img,"depth":depth,"hist":histtt})
-        #     exit()
-        return hist
-
-    def render_nonconf_hist1(self, detect_camera,laser_camera,bin_resolution,num_bins):
-        z_vals1 = self.compute_depth_values(detect_camera) # (N,)
-        z_vals2 = self.compute_depth_values(laser_camera) # (N,)
-
-        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten()
-
-        intensity=intensity/(z_vals1*z_vals2)
-
-        indices=((z_vals1+z_vals2)/bin_resolution).long() # 计算索引
-        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
-
-        hist=torch.zeros((num_bins,),dtype=torch.float32,device=detect_camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
-        # 利用scatter_add将强度值叠加到对应bin
-        hist.scatter_add_(0, indices,intensity)
-
-        return hist
-
     # 利用极坐标的形式计算histogram
-    def render_nonconf_hist2(self, detect_camera,laser_camera,bin_resolution,num_bins):
+    def render_nonconf_hist(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0):
         # 计算强度
         intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
 
-        # 计算片元中心的深度
-        a = self.compute_depth_values(detect_camera).unsqueeze(1) # (N,1)
-        b = self.compute_depth_values(laser_camera).unsqueeze(1) # (N,1)
-        r0=a+b # (N,1)
+        # 计算激光点和相机点到两边的距离
+        r0_=torch.norm(cameraPos-cameraOrigin, p=2, dim=1)
+        r0_-=t0
+        if laserOrigin!=None:
+            r0_+=torch.norm(laserPos-laserOrigin, p=2, dim=1)
 
-        # print(torch.max(a))
-        # print(torch.min(a))
-        # print(torch.max(b))
-        # print(torch.min(b))
+        # 计算片元中心的深度
+        a = torch.norm(self.gaussians.means-laserPos, p=2, dim=1).unsqueeze(1) # (N,1)
+        b = torch.norm(self.gaussians.means-cameraPos, p=2, dim=1).unsqueeze(1) # (N,1)
+        r0=a+b+r0_ # (N,1)
 
         r_=bin_resolution*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
         r=r_.view(1,num_bins) #(1,M)
@@ -1313,41 +1244,5 @@ class Scene:
         hist=torch.sum(hist,dim=0).flatten()
 
         hist[0:100]=0
-
-        return hist
-
-    def render_nonconf_hist(
-        self, camera,
-        laser_point: torch.Tensor, # [1,3]
-        bin_resolution,num_bins,
-        per_splat: int = -1, img_size: Tuple = (128, 128),
-        bg_colour: Tuple = (0.0, 0.0, 0.0),
-        no_grad=False
-    ):
-        intensity, depth=self.render(camera,per_splat,img_size,bg_colour,no_grad)
-        if intensity.shape[-1]==3:
-            intensity = 0.29900 * intensity[:,:,0:1] + 0.58700 * intensity[:,:,1:2] + 0.11400 * intensity[:,:,2:3] # RGB2grey
-        
-        select_mask = torch.where(mask > 0.5, True, False)
-        d2=depth[select_mask]
-
-        # unproject depth map to 3D points
-        points=unproject_depth_image(depth,camera) #[H,W,3]
-        d1=points[select_mask]-laser_point # [M,3]
-        d1=torch.sqrt((d1 ** 2).sum(dim=1))
-        print(torch.max(d1))
-        print(torch.min(d1))
-
-        hist_inten=intensity[select_mask]/(d2*d1) # 形状是[select_num]
-        indices=((d1+d2)/bin_resolution).long() # 计算索引
-        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
-
-        ### 这个做法只有在所有片元都能被laser_point看到的情况下才是对的！！！
-
-        # 没法传递梯度
-        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
-        # 利用scatter_add将强度值叠加到对应bin
-        hist.scatter_add_(0, indices, hist_inten.flatten())
-        hist=torch.clamp(hist,0)
 
         return hist

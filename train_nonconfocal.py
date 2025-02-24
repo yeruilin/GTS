@@ -7,9 +7,9 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist,get_camera
+from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist
 
-from dataset import RandomScanDataset,NLOSDataset
+from dataset import NonconfDataset
 import time
 import scipy
 import matplotlib.pyplot as plt
@@ -41,40 +41,39 @@ def run_training(args):
         os.makedirs(args.out_path, exist_ok=True)
 
     # # 随机初始化
-    radius=[0.2,0.2,0.2] ## K的参数
-    object_center=(0,0,0.26)
+    # radius=[0.2,0.2,0.2] ## K的参数
+    # object_center=(0,0,0.26)
     # radius=[0.6,0.6,0.6] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
+    radius=[1.0,0.6,1.0] ## phasor_id3的参数
+    object_center=(-0.20,0.05,1.40)
     gaussians = Gaussians(
-        num_points=30000, init_type="random",
+        num_points=10000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center
     )
-
-    fov_radius=gaussians.radius
 
     save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
 
     scene = Scene(gaussians)
     start=time.time()
     
-    dataset= NLOSDataset(args.data_path,device=args.device,confocal=False)
-    img_size=(dataset.N,dataset.N) # 渲染图片大小
+    dataset= NonconfDataset(args.data_path,device=args.device)
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
     print("radius:",radius)
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
-    print("width:",dataset.width)
-    print("laser position:",dataset.laserPosition)
+    print("laserOrigin:",dataset.laserOrigin)
+    print("cameraOrigin:",dataset.cameraOrigin)
+    print("cameraPos:",dataset.cameraPos)
+    print("t0:",dataset.t0)
 
     train_loader = DataLoader(
         dataset, batch_size=1,shuffle=True
     )
     train_itr = iter(train_loader)
-
-    laser_camera=get_camera(dataset.laserPosition,object_center,fov_radius,img_size,args.device)
     
     ### 开始训练
     # 阶段一：清掉无用位置的点
@@ -94,13 +93,11 @@ def run_training(args):
             except StopIteration:
                 train_itr = iter(train_loader)
                 data = next(train_itr)
-            scan_point=data["point"]
+            laserPos=data["point"]
             gt_hist=data["hist"].reshape(-1)
 
-            current_camera=get_camera(scan_point,object_center,fov_radius,img_size,args.device)
-
             # Rendering histogram using gaussian splatting
-            hist= scene.render_nonconf_hist2(current_camera,laser_camera,bin_resolution,nums_bin)
+            hist= scene.render_nonconf_hist(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -113,7 +110,7 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr%10==0:  
+        if itr%50==0:  
             plot_hist(hist,gt_hist,itr)   
 
         if itr%50==0:
