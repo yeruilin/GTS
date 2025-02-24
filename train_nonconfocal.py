@@ -28,10 +28,6 @@ def make_trainable(gaussians):
     gaussians.pre_act_scales.requires_grad=True
     gaussians.colours.requires_grad=True
     gaussians.pre_act_opacities.requires_grad=True
-    
-    if not gaussians.is_isotropic:
-        gaussians.pre_act_quats.requires_grad=True
-
 
 ### 随机初始化训练模型
 def run_training(args):
@@ -53,7 +49,7 @@ def run_training(args):
         colour_dim=1,extent=radius,center=object_center
     )
 
-    save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/init.ply",gaussians)
 
     scene = Scene(gaussians)
     start=time.time()
@@ -125,7 +121,7 @@ def run_training(args):
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            save_ply(f"temp/result{itr}.ply",gaussians)
 
         if itr==200 or itr%500==0:
             prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
@@ -173,7 +169,7 @@ def run_training(args):
     end=time.time()
     print("Training Completed. Training time:", end-start)
 
-    save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/result.ply",gaussians)
     print("Save ply!")
 
     plt.plot(loss_list)

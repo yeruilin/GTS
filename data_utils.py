@@ -286,7 +286,7 @@ def construct_list_of_attributes(colours,scaling,rotation,features_rest):
             l.append('rot_{}'.format(i))
         return l
 
-def save_ply(path,xyz_,colours_,opacity_,scaling_,rotation_,colour_dim=3):
+def save_ply(path,gaussian):
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
     except OSError as error:
@@ -295,16 +295,19 @@ def save_ply(path,xyz_,colours_,opacity_,scaling_,rotation_,colour_dim=3):
     max_sh_degree=3 # 球谐分量的部分
     f_rest_dim=3 * (max_sh_degree + 1) ** 2 - 3
 
-    xyz = xyz_.detach().cpu().numpy() # [N,3]
+    N=gaussian.means.shape[0]
+
+    xyz = gaussian.means.detach().cpu().numpy() # [N,3]
     normals = np.zeros_like(xyz) # [N,3]
-    if colour_dim==3:
-        f_dc = colours_.detach().contiguous().cpu().numpy() # [N,3]
+    if gaussian.colours.shape[-1]==3:
+        f_dc = gaussian.colours.detach().contiguous().cpu().numpy() # [N,3]
     else:
-        f_dc = colours_.detach().contiguous().repeat(1,3).cpu().numpy()
+        f_dc = gaussian.colours.detach().contiguous().repeat(1,3).cpu().numpy()
     f_rest = np.zeros((f_dc.shape[0],f_rest_dim)) # 球谐分量, [N,f_rest_dim]
-    opacities = opacity_.detach().cpu().unsqueeze(1).numpy() # [N,1]
-    scale = scaling_.detach().cpu().numpy() # [N,1]
-    rotation = rotation_.detach().cpu().numpy() # [N,4]
+    opacities = gaussian.pre_act_opacities.detach().cpu().unsqueeze(1).numpy() # [N,1]
+    scale = gaussian.pre_act_scales.detach().cpu().numpy() # [N,1]
+    rotation = np.zeros((N,4)) # [N,4]
+    rotation[:,3]=1.0
     dtype_full = [(attribute, 'f4') for attribute in construct_list_of_attributes(f_dc,scale,rotation,f_rest)]
 
     elements = np.empty(xyz.shape[0], dtype=dtype_full)

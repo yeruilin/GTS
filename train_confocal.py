@@ -28,9 +28,6 @@ def make_trainable(gaussians):
     gaussians.pre_act_scales.requires_grad=True
     gaussians.colours.requires_grad=True
     gaussians.pre_act_opacities.requires_grad=True
-    
-    if not gaussians.is_isotropic:
-        gaussians.pre_act_quats.requires_grad=True
 
 
 ### 随机初始化训练模型
@@ -69,7 +66,7 @@ def run_training(args):
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
 
-    save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/init.ply",gaussians)
 
     scene = Scene(gaussians)
     start=time.time()
@@ -133,7 +130,7 @@ def run_training(args):
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            save_ply(f"temp/result{itr}.ply",gaussians)
             
             plot_hist(hist,gt_hist,itr)
 

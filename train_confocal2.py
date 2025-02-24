@@ -33,9 +33,6 @@ def make_trainable(gaussians):
     gaussians.pre_act_scales.requires_grad=True
     gaussians.colours.requires_grad=True
     gaussians.pre_act_opacities.requires_grad=True
-    
-    if not gaussians.is_isotropic:
-        gaussians.pre_act_quats.requires_grad=True
 
 
 ### 随机初始化训练模型
@@ -59,7 +56,7 @@ def run_training(args):
     radius=gaussians.radius.item()
     object_center=gaussians.center.cpu().numpy()
 
-    save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/init.ply",gaussians)
 
     scene = Scene(gaussians)
     start=time.time()
@@ -122,7 +119,7 @@ def run_training(args):
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
         if itr%50==0:
-            save_ply(f"temp/splat_result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            save_ply(f"temp/splat_result{itr}.ply",gaussians)
             # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
             plot_hist(hist,gt_hist,itr)
 
@@ -159,7 +156,7 @@ def run_training(args):
     end=time.time()
     print("Training Completed. Training time:", end-start)
     # Saving Gaussian primitives (.ply)
-    save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/result.ply",gaussians)
     print("Save ply!")
 
     plt.plot(loss_list)
