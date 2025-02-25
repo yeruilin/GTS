@@ -36,17 +36,19 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
 
+    scale=0.01
+
     # # 随机初始化
-    # radius=[0.2,0.2,0.2] ## K的参数
-    # object_center=(0,0,0.26)
+    radius=[0.2,0.2,0.2] ## K的参数
+    object_center=(0,0,0.26)
     # radius=[0.6,0.6,0.6] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
-    radius=[1.0,0.6,1.0] ## phasor_id3的参数
-    object_center=(-0.20,0.05,1.40)
+    # radius=[1.0,0.6,1.0] ## phasor_id3的参数
+    # object_center=(-0.20,0.05,1.40)
     gaussians = Gaussians(
         num_points=10000, init_type="random",
         device=args.device, isotropic=True,
-        colour_dim=1,extent=radius,center=object_center
+        colour_dim=1,extent=radius,center=object_center,scale=scale
     )
 
     save_ply("temp/init.ply",gaussians)
@@ -131,7 +133,7 @@ def run_training(args):
         if itr==200:
             gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
             
-        if itr==500:
+        if itr==501:
             gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
         # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
@@ -207,7 +209,7 @@ def get_args():
         "--viz_freq", default=20, type=int,
         help="Frequency with which visualization should be performed."
     )
-    parser.add_argument("--device", default="cuda:1", type=str)
+    parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()
     return args
 

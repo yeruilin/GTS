@@ -37,17 +37,17 @@ def run_training(args):
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
     # object_center=(0.0,0.0,1.3)
-    radius=[0.4,0.4,0.2] ## mannequin数据的参数
-    object_center=(0.0,0.0,0.55)
-    scale=0.005
+    # radius=[0.4,0.4,0.2] ## mannequin数据的参数
+    # object_center=(0.0,0.0,0.55)
+    # scale=0.005
     # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # object_center=(0.0821,0.2270,1.1992)
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
-    # scale=0.008
-    # radius=[0.95,0.95,0.4] ## fk-dragon数据参数
-    # object_center=(-0.25,0.1,1.45)
-    # ratio=[0.8,0.8,0.4]
+    # scale=0.015
+    radius=[1.0,1.0,0.5] ## fk-dragon数据参数
+    object_center=(-0.17,0.2,1.35)
+    ratio=[0.7,0.6,0.4]
 
     dataset= NLOSDataset(args.data_path,device=args.device)
     
@@ -55,7 +55,7 @@ def run_training(args):
     nums_bin=dataset.M
     
     gaussians = Gaussians(
-        num_points=10000, init_type="random",
+        num_points=20000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
@@ -203,7 +203,7 @@ def get_args():
         "--num_itrs", default=501, type=int,
         help="Number of iterations to train the model."
     )
-    parser.add_argument("--device", default="cuda:1", type=str)
+    parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()
     return args
 

@@ -45,7 +45,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.max(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>0.009).squeeze()
+    mask=(gaussians.get_colour[:,0]>0.01).squeeze()
     ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
@@ -53,6 +53,8 @@ def create_renders(args):
     gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
     gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
     gaussians.means=gaussians.means[mask]
+
+    save_ply("temp/result_show.ply",gaussians)
 
     print(torch.max(gaussians.means,dim=0)[0])
     print(torch.min(gaussians.means,dim=0)[0])
@@ -113,10 +115,10 @@ def create_renders(args):
             depth = gaussian_filter(depth, sigma=1.0, truncate=2.5)
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
-        ## 旋转180°
-        img=np.flipud(np.fliplr(img))
-        coloured_depth=np.flipud(np.fliplr(coloured_depth))
-        mask=np.flipud(np.fliplr(mask))
+        # ## 旋转180°
+        # img=np.flipud(np.fliplr(img))
+        # coloured_depth=np.flipud(np.fliplr(coloured_depth))
+        # mask=np.flipud(np.fliplr(mask))
 
         # ## 旋转90°
         # img=np.rot90(img)
@@ -163,7 +165,7 @@ def get_args():
             "memory consumption."
         )
     )
-    parser.add_argument("--device", default="cuda:1", type=str)
+    parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()
     return args
 

@@ -40,7 +40,7 @@ class NLOSDataset(Dataset):
                 print(self.laserPosition)
 
         except  Exception as e:
-            print("no such file!")
+            print(e)
             exit()
 
     def  __len__(self):

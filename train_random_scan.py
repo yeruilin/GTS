@@ -40,24 +40,24 @@ def run_training(args):
     if not os.path.exists(args.out_path):
         os.makedirs(args.out_path, exist_ok=True)
     
-    thresh=0.0 # 颜色阈值
+    scale=0.015 # 默认大小
 
     # # 随机初始化
-    # radius=[0.6,0.6,0.4] ## random-nt数据参数
-    # object_center=(0.05,0,1.35)
-    radius=[0.7,0.9,0.4] ## random-statue数据参数
-    object_center=(0,0,1.1)
-    # thresh=0.017
+    radius=[0.6,0.6,0.4] ## random-nt数据参数
+    object_center=(0.05,0,1.35)
+    # radius=[0.7,0.9,0.4] ## random-statue数据参数
+    # object_center=(0,0,1.1)
+    # scale=0.015
     # radius=[0.6,0.6,0.6] ## random-bunny数据参数
     # object_center=(0,0,1.3)
     
     gaussians = Gaussians(
-        num_points=30000, init_type="random",
+        num_points=15000, init_type="random",
         device=args.device, isotropic=True,
-        colour_dim=1,extent=radius,center=object_center
+        colour_dim=1,extent=radius,center=object_center,scale=scale
     )
 
-    save_ply("temp/init.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/init.ply",gaussians)
 
     scene = Scene(gaussians)
     start=time.time()
@@ -125,7 +125,7 @@ def run_training(args):
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            save_ply(f"temp/result{itr}.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+            save_ply(f"temp/result{itr}.ply",gaussians)
             
             plot_hist(hist,gt_hist,itr)
 
@@ -137,7 +137,7 @@ def run_training(args):
         if itr==200:
             gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
             
-        if itr==500:
+        if itr==501:
             gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
         # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
@@ -175,7 +175,7 @@ def run_training(args):
     end=time.time()
     print("Training Completed. Training time:", end-start)
 
-    save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/result.ply",gaussians)
     print("Save ply!")
 
     plt.plot(loss_list)
@@ -206,14 +206,14 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--num_itrs", default=1000, type=int,
+        "--num_itrs", default=501, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(
         "--viz_freq", default=20, type=int,
         help="Frequency with which visualization should be performed."
     )
-    parser.add_argument("--device", default="cuda:1", type=str)
+    parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()
     return args
 
