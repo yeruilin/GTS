@@ -44,15 +44,15 @@ def create_renders(args):
 
     print(torch.max(gaussians.get_scaling))
 
-    mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    # mask=(gaussians.get_colour[:,0]>0.01).squeeze()
-    ## mask=(gaussians.means[:,2]<1.25).squeeze()
+    # mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
+    # # mask=(gaussians.get_colour[:,0]>0.01).squeeze()
+    # ## mask=(gaussians.means[:,2]<1.25).squeeze()
 
-    gaussians.colours=gaussians.colours[mask]
-    gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
-    gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
-    gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
-    gaussians.means=gaussians.means[mask]
+    # gaussians.colours=gaussians.colours[mask]
+    # gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
+    # gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
+    # gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
+    # gaussians.means=gaussians.means[mask]
 
     save_ply("temp/result_show.ply",gaussians)
 
@@ -115,10 +115,10 @@ def create_renders(args):
             depth = gaussian_filter(depth, sigma=1.0, truncate=2.5)
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
-        # # ## 旋转180°
-        # img=np.flipud(np.fliplr(img))
-        # coloured_depth=np.flipud(np.fliplr(coloured_depth))
-        # mask=np.flipud(np.fliplr(mask))
+        # ## 旋转180°
+        img=np.flipud(np.fliplr(img))
+        coloured_depth=np.flipud(np.fliplr(coloured_depth))
+        mask=np.flipud(np.fliplr(mask))
 
         # # ## 左右翻转(phasor数据都需要左右翻转)
         # img=np.fliplr(img)

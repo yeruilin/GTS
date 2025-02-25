@@ -87,24 +87,24 @@ class NonconfDataset(Dataset):
             self.data=torch.from_numpy(self.data).to(self.device)
             
             maxvalue=torch.max(mean_filter(self.data,window_size=20))
-            print(maxvalue)
+            print("histogram maxvalue:",maxvalue)
             self.data=self.data/maxvalue
 
             # 激光打在墙上的点
-            self.laserPos=torch.from_numpy(data_dict["laserPos"]).to(self.device) # [N,3]
+            self.laserPos=torch.from_numpy(data_dict["laserPos"]).float().to(self.device) # [N,3]
 
             # 激光出射位置
             if "laserOrigin" in data_dict:
-                self.laserOrigin=torch.from_numpy(data_dict["laserOrigin"]).view(1,3).to(self.device)
+                self.laserOrigin=torch.from_numpy(data_dict["laserOrigin"]).float().view(1,3).to(self.device)
             else:
                 self.laserOrigin=None
             print(self.laserOrigin)
             # 相机对准在墙上的点
-            self.cameraPos=torch.from_numpy(data_dict["cameraPos"]).view(1,3).to(self.device) # [1,3]
+            self.cameraPos=torch.from_numpy(data_dict["cameraPos"]).float().view(1,3).to(self.device) # [1,3]
 
             # 相机位置
             if "cameraOrigin" in data_dict:
-                self.cameraOrigin=torch.from_numpy(data_dict["cameraOrigin"]).view(1,3).to(self.device)
+                self.cameraOrigin=torch.from_numpy(data_dict["cameraOrigin"]).float().view(1,3).to(self.device)
             else:
                 self.cameraOrigin=self.cameraPos
 
