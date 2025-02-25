@@ -70,7 +70,8 @@ class NonconfDataset(Dataset):
 
             self.data=torch.from_numpy(self.data).to(self.device)
             
-            # 数据归一化
+            # 数据先经过均值滤波再归一化
+            
             self.data=self.data/torch.max(self.data)
 
             # 激光打在墙上的点

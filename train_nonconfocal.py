@@ -33,17 +33,19 @@ def make_trainable(gaussians):
 def run_training(args):
     torch.manual_seed(16)
 
-    scale=0.005
+    scale=0.01
 
     # # 随机初始化
-    radius=[0.2,0.2,0.2] ## K的参数
-    object_center=(0,0,0.26)
-    scale=0.002 # 范围太小了，所以需要片元小一点
+    # radius=[0.2,0.2,0.2] ## K的参数
+    # object_center=(0,0,0.26)
+    # scale=0.002 # 范围太小了，所以需要片元小一点
 
     # radius=[0.6,0.6,0.6] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
-    # radius=[1.0,0.6,1.0] ## phasor_id3的参数
-    # object_center=(-0.20,0.05,1.40)
+    # scale=0.015
+    radius=[1.0,0.6,1.0] ## phasor_id3的参数
+    object_center=(-0.20,0.05,1.40)
+
     gaussians = Gaussians(
         num_points=20000, init_type="random",
         device=args.device, isotropic=True,
@@ -107,7 +109,7 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr%50==0:  
+        if itr%10==0:  
             plot_hist(hist,gt_hist,itr)   
 
         if itr%50==0:
