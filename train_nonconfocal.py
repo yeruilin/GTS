@@ -33,20 +33,19 @@ def make_trainable(gaussians):
 def run_training(args):
     torch.manual_seed(16)
 
-    if not os.path.exists(args.out_path):
-        os.makedirs(args.out_path, exist_ok=True)
-
-    scale=0.01
+    scale=0.005
 
     # # 随机初始化
     radius=[0.2,0.2,0.2] ## K的参数
     object_center=(0,0,0.26)
+    scale=0.002 # 范围太小了，所以需要片元小一点
+
     # radius=[0.6,0.6,0.6] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # radius=[1.0,0.6,1.0] ## phasor_id3的参数
     # object_center=(-0.20,0.05,1.40)
     gaussians = Gaussians(
-        num_points=10000, init_type="random",
+        num_points=20000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
@@ -182,10 +181,6 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--out_path", default="./output", type=str,
-        help="Path to the directory where output should be saved to."
-    )
-    parser.add_argument(
         "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
@@ -202,12 +197,8 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--num_itrs", default=1000, type=int,
+        "--num_itrs", default=501, type=int,
         help="Number of iterations to train the model."
-    )
-    parser.add_argument(
-        "--viz_freq", default=20, type=int,
-        help="Frequency with which visualization should be performed."
     )
     parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()

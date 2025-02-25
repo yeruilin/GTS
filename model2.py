@@ -481,21 +481,18 @@ class Scene:
         a = torch.norm(self.gaussians.means-laserPos, p=2, dim=1).unsqueeze(1) # (N,1)
         b = torch.norm(self.gaussians.means-cameraPos, p=2, dim=1).unsqueeze(1) # (N,1)
         r0=a+b+r0_ # (N,1)
-        print(torch.min(r0))
-        print(torch.max(r0))
 
         r_=bin_resolution*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
         r=r_.view(1,num_bins) #(1,M)
 
         sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
-        # sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
+        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
 
         # 每个深度的概率
-        pr=math.sqrt(1/math.pi)*torch.exp(-((r-r0)**2/4/sigma**2))/2/sigma # 概率密度,[N,M]
-        # pr=pdf*bin_resolution/2
-        print(torch.sum(pr))
+        pdf=math.sqrt(1/math.pi)*torch.exp(-((r-r0)**2/4/sigma**2))/2/sigma # 概率密度,[N,M]
+        pr=pdf*bin_resolution
+        # print(torch.sum(pr,dim=1))
         pr=torch.clip(pr,0,1)
-        exit()
 
         hist=intensity.unsqueeze(1)/((a*b)) # (N,1)
         hist=hist*pr # (N,M)
