@@ -1,6 +1,7 @@
 import os
 from matplotlib.image import imread
 from torch.utils.data import Dataset
+import torch.nn.functional as F
 import numpy as np
 import torch
 from scipy.io import loadmat
@@ -8,6 +9,21 @@ from scipy.io import loadmat
 import warnings
 
 warnings.filterwarnings('error')
+
+def mean_filter(x,window_size):
+    # 数据先经过均值滤波再归一化
+    x_unfold = x.unfold(dimension=1, size=window_size, step=1)  # [N, M - window_size + 1, window_size]
+
+    # 计算每个窗口的均值
+    x_mean = x_unfold.mean(dim=2)  # [N, M - window_size + 1]
+
+    # 处理边界：填充缺失的部分
+    # 因为滑动窗口会导致输出长度变小，所以需要在两端填充 (window_size - 1) / 2 个值
+    pad_size = (window_size - 1) // 2
+    x_padded = F.pad(x_mean, (pad_size, pad_size), mode='replicate')  # [N, M]
+    
+    # 如果输入长度为偶数，则长度会减小1
+    return x_padded
 
 class NLOSDataset(Dataset):
     def __init__(self, data_path,z=0.0,device="cuda",confocal=True):
@@ -70,9 +86,9 @@ class NonconfDataset(Dataset):
 
             self.data=torch.from_numpy(self.data).to(self.device)
             
-            # 数据先经过均值滤波再归一化
-            
-            self.data=self.data/torch.max(self.data)
+            maxvalue=torch.max(mean_filter(self.data,window_size=20))
+            print(maxvalue)
+            self.data=self.data/maxvalue
 
             # 激光打在墙上的点
             self.laserPos=torch.from_numpy(data_dict["laserPos"]).to(self.device) # [N,3]
