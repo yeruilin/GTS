@@ -5,10 +5,8 @@ import numpy as np
 
 from typing import Tuple, Optional
 from pytorch3d.ops.knn import knn_points
-from pytorch3d.transforms import quaternion_to_matrix
-from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras
-from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics,unproject_depth_image
 import scipy
+from data_utils import load_gaussians_from_ply
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
@@ -126,7 +124,7 @@ class Gaussians:
         self.sphere=False # 是否使用球谐函数
 
         if self.device!="cpu":
-            self.to_cuda()
+            self.to(self.device)
 
     def __len__(self):
         return len(self.means)
@@ -244,7 +242,8 @@ class Gaussians:
         if self.is_isotropic and self.pre_act_quats.requires_grad:
             raise RuntimeError("You do not need to optimize quaternions in isotropic mode.")
 
-    def to_cuda(self):
+    def to(self,device):
+        self.device=device
         self.means = self.means.to(self.device)
         self.pre_act_scales = self.pre_act_scales.to(self.device)
         self.colours = self.colours.to(self.device)

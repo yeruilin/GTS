@@ -1,13 +1,10 @@
 import os
 import torch
-import imageio
 import argparse
 import numpy as np
 
-from PIL import Image
-from tqdm import tqdm
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist
+from data_utils import save_ply,OptimizationParams,plot_hist
 
 from dataset import NLOSDataset
 import time
@@ -33,9 +30,6 @@ def make_trainable(gaussians):
 ### 随机初始化训练模型
 def run_training(args):
     torch.manual_seed(16)
-
-    if not os.path.exists(args.out_path):
-        os.makedirs(args.out_path, exist_ok=True)
     
     scale=0.005 # 默认大小
     ratio=[0.85,0.85,0.85]
@@ -43,17 +37,17 @@ def run_training(args):
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
     # object_center=(0.0,0.0,1.3)
-    # radius=[0.4,0.4,0.2] ## mannequin数据的参数
-    # object_center=(0.0,0.0,0.55)
-    # scale=0.005
+    radius=[0.4,0.4,0.2] ## mannequin数据的参数
+    object_center=(0.0,0.0,0.55)
+    scale=0.005
     # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # object_center=(0.0821,0.2270,1.1992)
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.008
-    radius=[0.95,0.95,0.4] ## fk-dragon数据参数
-    object_center=(-0.25,0.1,1.45)
-    ratio=[0.8,0.8,0.4]
+    # radius=[0.95,0.95,0.4] ## fk-dragon数据参数
+    # object_center=(-0.25,0.1,1.45)
+    # ratio=[0.8,0.8,0.4]
 
     dataset= NLOSDataset(args.data_path,device=args.device)
     
@@ -179,7 +173,7 @@ def run_training(args):
     end=time.time()
     print("Training Completed. Training time:", end-start)
 
-    save_ply("temp/result.ply",gaussians.means,gaussians.colours,gaussians.pre_act_opacities,gaussians.pre_act_scales,gaussians.pre_act_quats,colour_dim=1)
+    save_ply("temp/result.ply",gaussians)
     print("Save ply!")
 
     plt.plot(loss_list)
@@ -189,10 +183,6 @@ def run_training(args):
 def get_args():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--out_path", default="./output", type=str,
-        help="Path to the directory where output should be saved to."
-    )
     parser.add_argument(
         "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
@@ -210,12 +200,8 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--num_itrs", default=1001, type=int,
+        "--num_itrs", default=501, type=int,
         help="Number of iterations to train the model."
-    )
-    parser.add_argument(
-        "--viz_freq", default=20, type=int,
-        help="Frequency with which visualization should be performed."
     )
     parser.add_argument("--device", default="cuda:1", type=str)
     args = parser.parse_args()
