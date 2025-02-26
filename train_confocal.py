@@ -34,6 +34,7 @@ def run_training(args):
     scale=0.005 # 默认大小
     ratio=[0.85,0.85,0.85]
     use_filter=False
+    num_points=30000
 
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
@@ -43,17 +44,21 @@ def run_training(args):
     # scale=0.005
     # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # object_center=(0.0821,0.2270,1.1992)
+    # scale=0.008
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
-    # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
-    # object_center=(-0.17,0.2,1.35)
+    radius=[1.0,1.0,0.5] ## fk-dragon数据参数
+    object_center=(-0.17,0.0,1.35)
+    ratio=[0.7,0.7,0.4]
+    num_points=20000
+    scale=0.008
+    # radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
+    # object_center=(0.1,0.1,1.35)
+    # use_filter=True
+    # scale=0.001
+    # num_points=20000
     # ratio=[0.7,0.6,0.4]
-    radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
-    object_center=(0.1,0.1,1.35)
-    use_filter=True
-    scale=0.001
-    ratio=[0.7,0.6,0.4]
 
     dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
     
@@ -61,7 +66,7 @@ def run_training(args):
     nums_bin=dataset.M
     
     gaussians = Gaussians(
-        num_points=20000, init_type="random",
+        num_points=num_points, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
@@ -105,7 +110,7 @@ def run_training(args):
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
