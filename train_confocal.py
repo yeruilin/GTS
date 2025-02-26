@@ -48,17 +48,17 @@ def run_training(args):
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
-    radius=[1.0,1.0,0.5] ## fk-dragon数据参数
-    object_center=(-0.17,0.0,1.35)
-    ratio=[0.7,0.7,0.4]
-    num_points=20000
-    scale=0.008
-    # radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
-    # object_center=(0.1,0.1,1.35)
-    # use_filter=True
-    # scale=0.001
+    # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
+    # object_center=(-0.17,0.0,1.35)
+    # ratio=[0.7,0.7,0.4]
     # num_points=20000
-    # ratio=[0.7,0.6,0.4]
+    # scale=0.008
+    radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
+    object_center=(-0.1,0.17,1.35)
+    use_filter=True
+    scale=0.001
+    num_points=20000
+    ratio=[0.7,0.7,0.4]
 
     dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
     
@@ -110,7 +110,9 @@ def run_training(args):
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
+            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            # 在实测数据上，纯用高斯拟合效果更差
+            # hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         

@@ -57,7 +57,7 @@ def gaussian_filter(x, kernel_size=10, sigma=1.0):
 
     # 处理边界：填充缺失的部分
     pad_size = (kernel_size - 1) // 2
-    if x.shape[-1]%2==0:
+    if x.shape[-1]!=pad_size*2+x_filtered.shape[-1]:
         x_padded = F.pad(x_filtered, (pad_size, pad_size+1), mode='replicate')  # [N, M]
     else:
         x_padded = F.pad(x_filtered, (pad_size, pad_size), mode='replicate')  # [N, M]
