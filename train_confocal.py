@@ -33,6 +33,7 @@ def run_training(args):
     
     scale=0.005 # 默认大小
     ratio=[0.85,0.85,0.85]
+    use_filter=False
 
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
@@ -45,11 +46,16 @@ def run_training(args):
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
-    radius=[1.0,1.0,0.5] ## fk-dragon数据参数
-    object_center=(-0.17,0.2,1.35)
+    # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
+    # object_center=(-0.17,0.2,1.35)
+    # ratio=[0.7,0.6,0.4]
+    radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
+    object_center=(0.1,0.1,1.35)
+    use_filter=True
+    scale=0.001
     ratio=[0.7,0.6,0.4]
 
-    dataset= NLOSDataset(args.data_path,device=args.device)
+    dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
     
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
@@ -125,7 +131,8 @@ def run_training(args):
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
             save_ply(f"temp/result{itr}.ply",gaussians)
-            
+
+        if itr%50==0:
             plot_hist(hist,gt_hist,itr)
 
         if itr==200 or itr%500==0:
@@ -162,7 +169,7 @@ def run_training(args):
         #     gaussians.densify_and_clone1(copy_num=2)
         #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
     
-    # 删除在最外一圈记录残差的点
+    ## 删除在最外一圈记录残差的点
     prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio[0], True, False).flatten()
     prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>gaussians.radius*ratio[1], True, False).flatten()
     prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>gaussians.radius*ratio[2], True, False).flatten()

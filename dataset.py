@@ -20,13 +20,52 @@ def mean_filter(x,window_size):
     # 处理边界：填充缺失的部分
     # 因为滑动窗口会导致输出长度变小，所以需要在两端填充 (window_size - 1) / 2 个值
     pad_size = (window_size - 1) // 2
-    x_padded = F.pad(x_mean, (pad_size, pad_size), mode='replicate')  # [N, M]
+    if x.shape[-1]%2==0:
+        x_padded = F.pad(x_mean, (pad_size, pad_size+1), mode='replicate')  # [N, M]
+    else:
+        x_padded = F.pad(x_mean, (pad_size, pad_size), mode='replicate')  # [N, M]
     
     # 如果输入长度为偶数，则长度会减小1
     return x_padded
 
+def gaussian_filter(x, kernel_size=10, sigma=1.0):
+    """
+    在 dim=1 上对输入张量进行高斯滤波。
+
+    参数:
+        x (torch.Tensor): 输入张量，大小为 [N, M]。
+        kernel_size (int): 高斯核大小。
+        sigma (float): 高斯核的标准差。
+
+    返回:
+        torch.Tensor: 滤波后的张量，大小为 [N, M]。
+    """
+
+    # 创建 1D 高斯核
+    kernel = torch.arange(kernel_size, dtype=torch.float32,device=x.device) - (kernel_size - 1) / 2.0
+    kernel = torch.exp(-kernel**2 / (2 * sigma**2))
+    kernel = kernel / kernel.sum()
+
+    # 扩展高斯核的维度以匹配输入张量
+    kernel = kernel.view(1, 1, -1)  # [1, 1, kernel_size]
+
+    # 使用 unfold 创建滑动窗口
+    x_unfold = x.unfold(dimension=1, size=kernel_size, step=1)  # [N, M - kernel_size + 1, kernel_size]
+
+    # 对每个窗口应用高斯核
+    x_filtered = (x_unfold * kernel).sum(dim=2)  # [N, M - kernel_size + 1]
+
+    # 处理边界：填充缺失的部分
+    pad_size = (kernel_size - 1) // 2
+    if x.shape[-1]%2==0:
+        x_padded = F.pad(x_filtered, (pad_size, pad_size+1), mode='replicate')  # [N, M]
+    else:
+        x_padded = F.pad(x_filtered, (pad_size, pad_size), mode='replicate')  # [N, M]
+
+    return x_padded
+
 class NLOSDataset(Dataset):
-    def __init__(self, data_path,z=0.0,device="cuda",confocal=True):
+    def __init__(self, data_path,z=0.0,device="cuda",filter=False):
         try:
             data_dict=loadmat(data_path)
             self.bin_resolution=data_dict["bin_resolution"]
@@ -48,12 +87,12 @@ class NLOSDataset(Dataset):
             self.data=torch.from_numpy(self.data).to(self.device)
             self.data[:,:,-1]=0
             
+            if filter:
+                self.data=gaussian_filter(self.data.reshape(-1,self.M),kernel_size=10,sigma=1.0)
+                self.data=self.data.view(self.N,self.N,-1)
+
             # 数据归一化
             self.data=self.data/torch.max(self.data)
-
-            if not confocal:
-                self.laserPosition=[item for sublist in data_dict["laserPosition"] for item in sublist]
-                print(self.laserPosition)
 
         except  Exception as e:
             print(e)

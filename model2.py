@@ -465,6 +465,23 @@ class Scene:
         hist=hist/r_**2
 
         return hist
+    
+    def render_conf_hist2(self, scan_point,bin_resolution,num_bins):
+        # 计算强度
+        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
+
+        # 计算片元中心的深度:scan_point is [1,3]
+        r0 = torch.norm(self.gaussians.means-scan_point, p=2, dim=1) # (N)
+
+        indices=r0*2/bin_resolution
+        indices=torch.clip(indices.long(),0,num_bins-1)
+
+        intensity=intensity/r0**2 # (N)
+        hist=torch.zeros((num_bins,),device=intensity.device,dtype=torch.float32)
+        
+        hist.scatter_add_(0,indices,intensity)
+
+        return hist
 
     # 利用极坐标的形式计算histogram
     def render_nonconf_hist(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0):
