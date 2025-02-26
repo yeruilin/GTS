@@ -48,10 +48,18 @@ def run_training(args):
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
-    radius=[1.0,1.0,0.3] ## fk-bike数据参数
-    object_center=(0.0,0.15,1.35)
-    ratio=[0.85,0.7,0.2]
+
+    # radius=[1.0,1.0,0.3] ## fk-bike数据参数
+    # object_center=(0.0,0.15,1.35)
+    # ratio=[0.85,0.7,0.2]
+    # num_points=20000
+    # use_filter=True
+
+    radius=[1.2,1.2,0.6] ## fk-teaser数据参数
+    object_center=(0.0,0.0,1.35)
+    ratio=[0.8,0.8,0.4]
     num_points=20000
+    use_filter=True
 
     # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
     # object_center=(-0.17,0.0,1.35)
