@@ -1,6 +1,6 @@
 import numpy as np
 import scipy
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter,grey_closing,generate_binary_structure
 import argparse
 from data_utils import load_gaussians_from_ply
 
@@ -26,22 +26,13 @@ def gaussians_to_voxel(gaussians, imgsize, radius, center):
 
     voxel = np.zeros(grid_size)
 
-    # # 生成体素网格坐标（中心点坐标）
-    # x = np.arange(grid_size[0]) * voxel_size[0] + bbox_min[0] + voxel_size[0]/2
-    # y = np.arange(grid_size[1]) * voxel_size[1] + bbox_min[1] + voxel_size[1]/2
-    # z = np.arange(grid_size[2]) * voxel_size[2] + bbox_min[2] + voxel_size[2]/2
-    
-    # # 预计算所有体素中心点坐标
-    # xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
-    # positions = np.stack((xx, yy, zz), axis=-1)  # 形状为 (nx, ny, nz, 3)
-
     means, sigmas, intensity=gaussians
 
     # 遍历所有高斯分布
     for i in range(means.shape[0]):
         # 计算3σ边界
-        min_corner = means[i,:] - 3*sigmas[i]
-        max_corner = means[i,:] + 3*sigmas[i]
+        min_corner = means[i,:] - 2*sigmas[i]
+        max_corner = means[i,:] + 2*sigmas[i]
         
         # 转换为体素索引范围
         idx_min = ((min_corner - bbox_min) // voxel_size).astype(int)
@@ -52,7 +43,7 @@ def gaussians_to_voxel(gaussians, imgsize, radius, center):
         idx_max = np.clip(idx_max, None, grid_size)
         
         # 只计算影响区域内的体素
-        voxel[idx_min[0]:idx_max[0], idx_min[1]:idx_max[1],idx_min[2]:idx_max[2]]+=1 # intensity[i]
+        voxel[idx_min[0]:idx_max[0], idx_min[1]:idx_max[1],idx_min[2]:idx_max[2]]+=intensity[i] # intensity[i]
 
     return voxel
 
@@ -86,28 +77,37 @@ if __name__ == "__main__":
     means=data_dict["xyz"] # (N,3)
     sigma=np.exp(data_dict["scale"]) # (N,1)
     # sigma=np.ones((means.shape[0],))*0.01
-    intensity=data_dict["dc_colours"][:,0]**2 # (N,1)
+
+    intensity=np.pow(np.abs(data_dict["dc_colours"][:,0]),1/4) # (N,1)
+    # intensity=np.abs(data_dict["dc_colours"][:,0]) # (N,1)
 
 
     # radius=[0.4,0.4,0.2] ## mannequin数据的参数
     # center=(0.0,0.0,0.55)
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # center=(0.0037,0.1018,0.8335)
-    radius=[0.3,0.3,0.3] ## teapot数据的参数 
-    center=(0.0821,0.2270,1.1992)
-    # radius=[1.0,1.0,0.3] ## fk-bike数据参数
-    # center=(0.0,0.15,1.35)
+    # radius=[0.3,0.3,0.3] ## teapot数据的参数 
+    # center=(0.0821,0.2270,1.1992)
+    radius=[1.0,1.0,0.3] ## fk-bike数据参数
+    center=(0.0,0.15,1.35)
     # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
     # center=(-0.1,0.1,1.35)
     # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
     # center=(0.0,0.0,1.35)
+    # radius=[0.7,0.9,0.4] ## random-statue数据参数
+    # center=(0,0,1.1)
 
     # 高斯转体素
     voxel=gaussians_to_voxel([means,sigma,intensity],[args.img_dim,args.img_dim],radius,center)
+    voxel=np.transpose(voxel,[1,0,2])
 
     # # 平滑处理
     # sigma = 1.0  # 定义高斯核的标准差（sigma）
     # filtered_vol = gaussian_filter(voxel, sigma=sigma, mode='constant', truncate=2.5)
+
+    # # 形态学连接
+    # structure = generate_binary_structure(rank=3, connectivity=1)
+    # voxel = grey_closing(voxel, structure=structure)
     
     scipy.io.savemat("temp/voxel.mat",{"voxel":voxel})
 
