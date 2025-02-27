@@ -46,13 +46,13 @@ def create_renders(args):
 
     mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
     mask=(gaussians.get_colour[:,0]>0.002).squeeze()
-    ## mask=(gaussians.means[:,2]<1.25).squeeze()
+    # mask=(gaussians.means[:,1]<0.6).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
     gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
     gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
-    #gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
-    gaussians.pre_act_scales=torch.ones_like(gaussians.pre_act_scales[mask],device=args.device)*math.log(0.005)
+    gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
+    # gaussians.pre_act_scales=torch.ones_like(gaussians.pre_act_scales[mask],device=args.device)*math.log(0.005)
     gaussians.means=gaussians.means[mask]
 
     save_ply("temp/result_show.ply",gaussians)

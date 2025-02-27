@@ -11,16 +11,9 @@ import time
 import scipy
 import matplotlib.pyplot as plt
 
-### 整个训练过程分为两步：
-### 1.首先按照类似于BP的思路只按照深度来优化color
-### 2.随后全面优化scale,opacity等参数
-
 from model2 import Scene, Gaussians
 
 def make_trainable(gaussians):
-
-    ### YOUR CODE HERE ###
-    # HINT: You can access and modify parameters from gaussians
     gaussians.means.requires_grad=True
     gaussians.pre_act_scales.requires_grad=True
     gaussians.colours.requires_grad=True
@@ -49,17 +42,17 @@ def run_training(args):
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
 
-    # radius=[1.0,1.0,0.3] ## fk-bike数据参数
-    # object_center=(0.0,0.15,1.35)
-    # ratio=[0.85,0.7,0.2]
-    # num_points=20000
+    radius=[1.2,1.0,0.5] ## fk-bike数据参数
+    object_center=(0.0,0.2,1.35)
+    ratio=[0.8,0.5,0.2]
+    num_points=20000
     # use_filter=True
 
-    radius=[1.2,1.2,0.6] ## fk-teaser数据参数
-    object_center=(0.0,0.0,1.35)
-    ratio=[0.8,0.8,0.4]
-    num_points=20000
-    use_filter=True
+    # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
+    # object_center=(0.0,0.0,1.35)
+    # ratio=[0.8,0.8,0.4]
+    # num_points=20000
+    # use_filter=True
 
     # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
     # object_center=(-0.17,0.0,1.35)
@@ -101,7 +94,6 @@ def run_training(args):
     train_itr = iter(train_loader)
     
     ### 开始训练
-    # 阶段一：清掉无用位置的点
     opt_param=OptimizationParams()
     gaussians.training_setup(opt_param)
     make_trainable(gaussians)
@@ -165,29 +157,6 @@ def run_training(args):
             
         if itr==501:
             gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
-        
-        # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        # if itr==1000:
-        #     # 删除小于均值的位置
-        #     if thresh==0:
-        #         prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
-        #     else:
-        #         prune_mask=torch.where(gaussians.get_colour<=thresh, True, False).flatten()
-            
-        #     # 删除在最外一圈记录残差的点
-        #     ratio=0.85
-        #     prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
-        #     prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
-        #     prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
-        #     prune_mask_=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
-        #     prune_mask=torch.logical_or(prune_mask,prune_mask_)
-
-        #     gaussians.prune_points(prune_mask)
-        #     print(f"prune number: {torch.sum(prune_mask).item()}")
-
-        #     # 剩下的点全都进行拷贝
-        #     gaussians.densify_and_clone1(copy_num=2)
-        #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
     
     ## 删除在最外一圈记录残差的点
     prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio[0], True, False).flatten()

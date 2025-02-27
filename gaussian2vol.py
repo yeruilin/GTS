@@ -78,7 +78,7 @@ if __name__ == "__main__":
     sigma=np.exp(data_dict["scale"]) # (N,1)
     # sigma=np.ones((means.shape[0],))*0.01
 
-    intensity=np.pow(np.abs(data_dict["dc_colours"][:,0]),1/4) # (N,1)
+    intensity=np.pow(np.abs(data_dict["dc_colours"][:,0]),1) # (N,1)
     # intensity=np.abs(data_dict["dc_colours"][:,0]) # (N,1)
 
 
@@ -101,9 +101,9 @@ if __name__ == "__main__":
     voxel=gaussians_to_voxel([means,sigma,intensity],[args.img_dim,args.img_dim],radius,center)
     voxel=np.transpose(voxel,[1,0,2])
 
-    # # 平滑处理
-    # sigma = 1.0  # 定义高斯核的标准差（sigma）
-    # filtered_vol = gaussian_filter(voxel, sigma=sigma, mode='constant', truncate=2.5)
+    # 平滑处理
+    sigma = 1.0  # 定义高斯核的标准差（sigma）
+    filtered_vol = gaussian_filter(voxel, sigma=sigma, mode='constant', truncate=2.5)
 
     # # 形态学连接
     # structure = generate_binary_structure(rank=3, connectivity=1)

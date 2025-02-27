@@ -1,34 +1,21 @@
 import os
 import torch
-import imageio
 import argparse
 import numpy as np
 
-from PIL import Image
-from tqdm import tqdm
 from torch.utils.data import DataLoader
-from data_utils import save_ply,OptimizationParams,wasserstein_distance,plot_hist
+from data_utils import save_ply,OptimizationParams,plot_hist
 
 from dataset import NLOSDataset
 import time
 import scipy
 import matplotlib.pyplot as plt
 
-import warnings
-warnings.filterwarnings('ignore')
-
-### 整个训练过程分为两步：
-### 1.首先按照类似于BP的思路只按照深度来优化color
-### 2.随后全面优化scale,opacity等参数
-
-# 本代码处理第二阶段（泼墨优化）
+# 想要收敛后增加片元来提高效果，但是效果反而更差。这可能是因为没有多余片元来拟合残差了，反而造成了畸变
 
 from model2 import Scene, Gaussians
 
 def make_trainable(gaussians):
-
-    ### YOUR CODE HERE ###
-    # HINT: You can access and modify parameters from gaussians
     gaussians.means.requires_grad=True
     gaussians.pre_act_scales.requires_grad=True
     gaussians.colours.requires_grad=True
@@ -38,38 +25,74 @@ def make_trainable(gaussians):
 ### 随机初始化训练模型
 def run_training(args):
     torch.manual_seed(16)
+    
+    scale=0.005 # 默认大小
+    ratio=[0.85,0.85,0.85]
+    use_filter=False
+    num_points=30000
 
-    if not os.path.exists(args.out_path):
-        os.makedirs(args.out_path, exist_ok=True)
+    # # 随机初始化
+    # radius=0.65 ## cow数据的参数
+    # object_center=(0.0,0.0,1.3)
+    # radius=[0.4,0.4,0.2] ## mannequin数据的参数
+    # object_center=(0.0,0.0,0.55)
+    # scale=0.005
+    # radius=[0.3,0.3,0.3] ## teapot数据的参数 
+    # object_center=(0.0821,0.2270,1.1992)
+    # scale=0.008
+    # radius=[0.5,0.5,0.4] ## bunny的参数
+    # object_center=(0.0037,0.1018,0.8335)
+    # scale=0.015
 
-    # path="test_bunny/result3000.ply"
-    path="temp/result1500.ply"
+    radius=[1.2,1.0,0.5] ## fk-bike数据参数
+    object_center=(0.0,0.2,1.35)
+    ratio=[0.8,0.5,0.2]
+    num_points=20000
+    # use_filter=True
 
+    # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
+    # object_center=(0.0,0.0,1.35)
+    # ratio=[0.8,0.8,0.4]
+    # num_points=20000
+    # use_filter=True
+
+    # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
+    # object_center=(-0.17,0.0,1.35)
+    # ratio=[0.7,0.7,0.4]
+    # num_points=20000
+    # scale=0.008
+    # radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
+    # object_center=(-0.1,0.1,1.35)
+    # use_filter=True
+    # scale=0.001
+    # num_points=20000
+    # ratio=[0.7,0.7,0.4]
+
+    dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
+    
+    bin_resolution=dataset.bin_resolution
+    nums_bin=dataset.M
+    
+    # gaussians = Gaussians(
+    #     num_points=num_points, init_type="random",
+    #     device=args.device, isotropic=True,
+    #     colour_dim=1,extent=radius,center=object_center,scale=scale
+    # )
     gaussians = Gaussians(
-        init_type="gaussians",load_path=path,
-        device=args.device,colour_dim=1
+        load_path="temp_/result_show.ply", init_type="gaussians",
+        device=args.device, colour_dim=1
     )
-
-    ## 初始一个比较大的规模然后开始缩小
-    gaussians.pre_act_scales[:,:]=-4.6
-
-    radius=gaussians.radius.item()
-    object_center=gaussians.center.cpu().numpy()
 
     save_ply("temp/init.ply",gaussians)
 
     scene = Scene(gaussians)
     start=time.time()
-    
-    dataset= NLOSDataset(args.data_path,device=args.device)
 
-    bin_resolution=dataset.bin_resolution
-    nums_bin=dataset.M
-
-    print("radius:",radius)
+    print("radius:",gaussians.radius)
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
     print("width:",dataset.width)
+    print("point number:",gaussians.means.shape[0])
 
     train_loader = DataLoader(
         dataset, batch_size=1,shuffle=True
@@ -78,15 +101,15 @@ def run_training(args):
     
     ### 开始训练
     opt_param=OptimizationParams()
-    opt_param.densification_interval=50
-    opt_param.densify_from_iter=1
-    opt_param.position_lr_init=0.0001
     gaussians.training_setup(opt_param)
     make_trainable(gaussians)
 
+    ## 增加点数
+    gaussians.densify_and_clone1(copy_num=9,std_multiple=7)
+    print("point number:",gaussians.means.shape[0])
+
     loss_list=[]
 
-    # Training loop
     for itr in range(1,args.num_itrs):
         loss=0
         sample_num=16
@@ -101,7 +124,10 @@ def run_training(args):
             scan_point=data["point"]
             gt_hist=data["hist"].reshape(-1)
 
+            # Rendering histogram using gaussian splatting
             hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            # 在实测数据上，纯用高斯拟合效果更差
+            # hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -109,53 +135,50 @@ def run_training(args):
         loss.backward()
         loss_list.append(loss.item())
 
-        print(torch.max(gaussians.means.grad),torch.mean(gaussians.means.grad))
-
-        if itr==100:
-            # 对于尺寸大的点，需要强行设置比较小的scale
-            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
-            gaussians.prune_points(prune_mask)
-            # gaussians.set_scale(prune_mask,0.01)
-            print(f"prune number: {torch.sum(prune_mask).item()}")
+        with torch.no_grad():
+            gaussians.optimizer.step()
+            gaussians.optimizer.zero_grad(set_to_none = True)
+            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
         if itr%50==0:
-            save_ply(f"temp/splat_result{itr}.ply",gaussians)
-            # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":hist.detach().cpu().numpy(),"gt_hist":gt_hist.detach().cpu().numpy()})
+            # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
+            # 防止出现太大的片元
+            select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+            gaussians.density_and_split1(select_mask,copy_num=1)
+            print(f"split number: {torch.sum(select_mask).item()}")
+
+            # 直接删除太大的片元
+            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+            gaussians.prune_points(prune_mask)
+            print(f"prune number: {torch.sum(prune_mask).item()}")
+
+            save_ply(f"temp/result{itr}.ply",gaussians)
+
+        if itr%50==0:
             plot_hist(hist,gt_hist,itr)
 
-            ## 把比较大的片元分成小片元
-            if itr>100:
-                select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
-                gaussians.density_and_split1(select_mask,copy_num=2)
-                print(f"split number: {torch.sum(select_mask).item()}")
-
-        # print(torch.max(gaussians.pre_act_scales.grad),torch.mean(gaussians.pre_act_scales.grad))
-
-        # with torch.no_grad():
-        #     # # 裁剪深度不在指定范围的片元
-        #     if True:
-        #         # 统计梯度
-        #         if itr > opt_param.densify_from_iter:
-        #             visibility_filter=torch.ones(gaussians.means.shape[0], dtype=torch.bool).to(args.device) # 全都记录梯度
-        #             gaussians.add_densification_stats(gaussians.means, visibility_filter)
-                    
-        #         # 一段时间要增加或删减高斯片元
-        #         if itr > opt_param.densify_from_iter and itr % opt_param.densification_interval == 0:
-        #             print("densify_and_prune")
-        #             gaussians.densify_and_prune(
-        #                 grad_threshold=densify_grad_threshold, 
-        #                 min_opacity=0.1, 
-        #                 extent=radius
-        #             )
-
-        gaussians.optimizer.step()
-        gaussians.optimizer.zero_grad(set_to_none = True)
-        print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
-
+        if itr==200 or itr%500==0:
+            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
+            gaussians.prune_points(prune_mask)
+            print(f"prune number: {torch.sum(prune_mask).item()}")
+        
+        if itr==200:
+            gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
+            
+        if itr==501:
+            gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
+    
+    ## 删除在最外一圈记录残差的点
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio[0], True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>gaussians.radius*ratio[1], True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>gaussians.radius*ratio[2], True, False).flatten()
+    prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+    gaussians.prune_points(prune_mask)
+    print(f"prune number: {torch.sum(prune_mask).item()}")
 
     end=time.time()
     print("Training Completed. Training time:", end-start)
-    # Saving Gaussian primitives (.ply)
+
     save_ply("temp/result.ply",gaussians)
     print("Save ply!")
 
@@ -166,10 +189,6 @@ def run_training(args):
 def get_args():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--out_path", default="./output", type=str,
-        help="Path to the directory where output should be saved to."
-    )
     parser.add_argument(
         "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
@@ -187,12 +206,8 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--num_itrs", default=1001, type=int,
+        "--num_itrs", default=501, type=int,
         help="Number of iterations to train the model."
-    )
-    parser.add_argument(
-        "--viz_freq", default=20, type=int,
-        help="Frequency with which visualization should be performed."
     )
     parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()
