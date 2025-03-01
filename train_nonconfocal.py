@@ -41,8 +41,8 @@ def run_training(args):
     # scale=0.002 # 范围太小了，所以需要片元小一点
 
     radius=[0.6,0.6,0.6] ## bunny的参数
-    object_center=(0.0037,0.1018,0.8335)
-    scale=0.01
+    object_center=(0.0,0.0,0.8335)
+    scale=0.005
     # radius=[1.0,0.6,1.0] ## phasor_id3的参数
     # object_center=(-0.20,0.05,1.40)
     # radius=[0.825,0.75,0.25] ## phasor_id5的参数

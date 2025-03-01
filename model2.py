@@ -440,14 +440,14 @@ class Scene:
 
 
     # 利用极坐标的形式计算histogram
-    def render_conf_hist(self, scan_point,bin_resolution,num_bins):
+    def render_conf_hist(self, scan_point,bin_resolution,num_bins,t0):
         # 计算强度
         intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
 
         # 计算片元中心的深度:scan_point is [1,3]
         r0 = torch.norm(self.gaussians.means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
 
-        r_=bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
+        r_=t0/2+bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
         r=r_.view(1,num_bins) #(1,M)
 
         sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)

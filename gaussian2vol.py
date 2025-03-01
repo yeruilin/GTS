@@ -31,8 +31,8 @@ def gaussians_to_voxel(gaussians, imgsize, radius, center):
     # 遍历所有高斯分布
     for i in range(means.shape[0]):
         # 计算3σ边界
-        min_corner = means[i,:] - 2*sigmas[i]
-        max_corner = means[i,:] + 2*sigmas[i]
+        min_corner = means[i,:] - 3*sigmas[i]
+        max_corner = means[i,:] + 3*sigmas[i]
         
         # 转换为体素索引范围
         idx_min = ((min_corner - bbox_min) // voxel_size).astype(int)
@@ -101,9 +101,9 @@ if __name__ == "__main__":
     voxel=gaussians_to_voxel([means,sigma,intensity],[args.img_dim,args.img_dim],radius,center)
     voxel=np.transpose(voxel,[1,0,2])
 
-    # 平滑处理
-    sigma = 1.0  # 定义高斯核的标准差（sigma）
-    filtered_vol = gaussian_filter(voxel, sigma=sigma, mode='constant', truncate=2.5)
+    # # 平滑处理
+    # sigma = 1.0  # 定义高斯核的标准差（sigma）
+    # filtered_vol = gaussian_filter(voxel, sigma=sigma, mode='constant', truncate=2.5)
 
     # # 形态学连接
     # structure = generate_binary_structure(rank=3, connectivity=1)

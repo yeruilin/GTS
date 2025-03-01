@@ -48,7 +48,7 @@ def run_training(args):
     object_center=(0.0,0.2,1.35)
     ratio=[0.8,0.5,0.2]
     num_points=20000
-    # use_filter=True
+    use_filter=True
 
     # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
     # object_center=(0.0,0.0,1.35)
@@ -79,7 +79,7 @@ def run_training(args):
     #     colour_dim=1,extent=radius,center=object_center,scale=scale
     # )
     gaussians = Gaussians(
-        load_path="temp_/result_show.ply", init_type="gaussians",
+        load_path="test_random_statue0225/result.ply", init_type="gaussians",
         device=args.device, colour_dim=1
     )
 
@@ -105,8 +105,8 @@ def run_training(args):
     make_trainable(gaussians)
 
     ## 增加点数
-    gaussians.densify_and_clone1(copy_num=9,std_multiple=7)
-    print("point number:",gaussians.means.shape[0])
+    # gaussians.densify_and_clone1(copy_num=9,std_multiple=7)
+    # print("point number:",gaussians.means.shape[0])
 
     loss_list=[]
 
@@ -121,11 +121,15 @@ def run_training(args):
                 train_itr = iter(train_loader)
                 data = next(train_itr)
 
-            scan_point=data["point"]
+            # scan_point=data["point"]
+            scan_point=torch.tensor([-1,0.3,0],device=args.device).view(1,3)
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
             hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            hist=hist.detach().cpu().numpy()
+            scipy.io.savemat("temp/hist.mat",{"dd":hist})
+            exit()
             # 在实测数据上，纯用高斯拟合效果更差
             # hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 

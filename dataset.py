@@ -94,6 +94,12 @@ class NLOSDataset(Dataset):
             # 数据归一化
             self.data=self.data/torch.max(self.data)
 
+            if "t0" in data_dict:
+                self.t0=torch.from_numpy(data_dict["t0"]).item() # 浮点数
+                print(self.t0)
+            else:
+                self.t0=0.0
+
         except  Exception as e:
             print(e)
             exit()
