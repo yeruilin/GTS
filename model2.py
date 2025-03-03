@@ -453,34 +453,9 @@ class Scene:
         sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
         sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
 
-        # 每个深度的概率
-        pdf=math.sqrt(0.5/math.pi) * (r/(r0*sigma))*torch.exp(-0.5*((r-r0)/sigma)**2) # 概率密度,[N,M]
-        pr=pdf*bin_resolution/2 # 概率, [N,M]
-        pr=torch.clip(pr,0,1)
-
-        # print(torch.mean(torch.sum(pr,1)))
-
-        hist=intensity.unsqueeze(1)*pr # (N,M)
-        hist=torch.sum(hist,dim=0).flatten()
-        hist=hist/r_**2
-
-        return hist
-    
-    def render_conf_hist2(self, scan_point,bin_resolution,num_bins):
-        # 计算强度
-        intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
-
-        # 计算片元中心的深度:scan_point is [1,3]
-        r0 = torch.norm(self.gaussians.means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
-
-        r_=bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
-        r=r_.view(1,num_bins) #(1,M)
-
-        sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
-        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
-
-        # 每个深度的概率
-        pdf=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma # 概率密度,[N,M]
+        # 概率密度,[N,M]
+        pdf=math.sqrt(0.5/math.pi) * (r/(r0*sigma))*torch.exp(-0.5*((r-r0)/sigma)**2) # 完整的径向分布
+        # pdf=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma # 高斯分布
         pr=pdf*bin_resolution/2 # 概率, [N,M]
         pr=torch.clip(pr,0,1)
 

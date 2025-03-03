@@ -78,7 +78,7 @@ if __name__ == "__main__":
     sigma=np.exp(data_dict["scale"]) # (N,1)
     # sigma=np.ones((means.shape[0],))*0.01
 
-    intensity=np.pow(np.abs(data_dict["dc_colours"][:,0]),1) # (N,1)
+    intensity=np.pow(np.abs(data_dict["dc_colours"][:,0]),2) # (N,1)
     # intensity=np.abs(data_dict["dc_colours"][:,0]) # (N,1)
 
 
@@ -88,14 +88,18 @@ if __name__ == "__main__":
     # center=(0.0037,0.1018,0.8335)
     # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # center=(0.0821,0.2270,1.1992)
-    radius=[1.0,1.0,0.3] ## fk-bike数据参数
-    center=(0.0,0.15,1.35)
+    # radius=[1.0,1.0,0.3] ## fk-bike数据参数
+    # center=(0.0,0.15,1.35)
     # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
     # center=(-0.1,0.1,1.35)
     # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
     # center=(0.0,0.0,1.35)
     # radius=[0.7,0.9,0.4] ## random-statue数据参数
     # center=(0,0,1.1)
+    # radius=[1.2,1.2,1.0] ## daichen-7数据参数
+    # center=(0.4,0.1,5.0)
+    radius=[0.7,0.7,1.0] ## daichen-7数据参数
+    center=(0,0.35,4.95)
 
     # 高斯转体素
     voxel=gaussians_to_voxel([means,sigma,intensity],[args.img_dim,args.img_dim],radius,center)

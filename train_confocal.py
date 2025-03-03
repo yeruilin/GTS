@@ -66,10 +66,16 @@ def run_training(args):
     # num_points=20000
     # ratio=[0.7,0.7,0.4]
 
-    radius=[0.7,0.7,1.0] ## daichen-L数据参数
-    object_center=(0,0.35,4.95)
-    ratio=[0.85,0.85,0.05]
-    num_points=10000
+    # radius=[0.7,0.7,1.0] ## daichen-L数据参数
+    # object_center=(0,0.35,4.95)
+    # ratio=[0.85,0.85,0.05]
+    # num_points=10000
+
+    radius=[1.2,1.2,1.0] ## daichen-7数据参数
+    object_center=(0.1,0.2,5.0)
+    ratio=[0.85,0.85,0.5]
+    num_points=15000
+    scale=0.015
 
     dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
     

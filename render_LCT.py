@@ -45,9 +45,9 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>=0.2).squeeze()
-    # mask=torch.logical_and(mask,(gaussians.means[:,2]<5.0).squeeze())
-    # mask=torch.logical_and(mask,(gaussians.means[:,2]>4.9).squeeze())
+    mask=(gaussians.get_colour[:,0]>=0.22).squeeze()
+    # mask=torch.logical_and(mask,(gaussians.means[:,2]<5.05).squeeze())
+    # mask=torch.logical_and(mask,(gaussians.means[:,2]>4.4).squeeze())
 
     gaussians.colours=gaussians.colours[mask]
     gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
@@ -103,8 +103,8 @@ def create_renders(args):
         depth = depth.detach().cpu().numpy()
 
         if use_filter:
-            img = cv2.medianBlur(img, 3)
-            img = gaussian_filter(img, sigma=1.0, truncate=2.5)
+            img = cv2.medianBlur(img, 5)
+            img = gaussian_filter(img, sigma=1.0)
 
         img=(img-np.min(img))/(np.max(img)-np.min(img))
         img = (img * 255.0).astype(np.uint8)
@@ -113,14 +113,14 @@ def create_renders(args):
         # Colouring the depth map
         depth = depth[:, :, 0].astype(np.float32)  # (H, W) # 有效的depth在5-7之间，因此可以在这个范围归一化配置颜色
         if use_filter:
-            depth = cv2.medianBlur(depth, 3)
-            depth = gaussian_filter(depth, sigma=1.0, truncate=2.5)
+            depth = cv2.medianBlur(depth, 5)
+            depth = gaussian_filter(depth, sigma=1.0)
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
-        # ## 旋转180°
-        img=np.flipud(np.fliplr(img))
-        coloured_depth=np.flipud(np.fliplr(coloured_depth))
-        mask=np.flipud(np.fliplr(mask))
+        # # ## 旋转180°
+        # img=np.flipud(np.fliplr(img))
+        # coloured_depth=np.flipud(np.fliplr(coloured_depth))
+        # mask=np.flipud(np.fliplr(mask))
 
         # # ## 左右翻转(phasor数据都需要左右翻转)
         # img=np.fliplr(img)
@@ -132,7 +132,8 @@ def create_renders(args):
         # coloured_depth=np.rot90(coloured_depth)
         # mask=np.rot90(mask)
 
-        concat = np.concatenate([img, coloured_depth, mask], axis = 1)
+        # concat = np.concatenate([np.transpose(img,[1,0,2]), np.transpose(coloured_depth,[1,0,2]), np.transpose(mask,[1,0,2])], axis = 1)
+        concat = np.concatenate([img,coloured_depth, mask], axis = 1)
         resized = Image.fromarray(concat).resize((256*3, 256))
         resized.save(debug_path)
 
