@@ -440,7 +440,7 @@ class Scene:
 
 
     # 利用极坐标的形式计算histogram
-    def render_conf_hist(self, scan_point,bin_resolution,num_bins,t0):
+    def render_conf_hist(self, scan_point,bin_resolution,num_bins,t0,decay=2.0):
         # 计算强度
         intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
 
@@ -463,7 +463,7 @@ class Scene:
 
         hist=intensity.unsqueeze(1)*pr # (N,M)
         hist=torch.sum(hist,dim=0).flatten()
-        hist=hist/r_**2
+        hist=hist/torch.pow(r_,decay)
 
         return hist
     

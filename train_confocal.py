@@ -28,6 +28,7 @@ def run_training(args):
     ratio=[0.85,0.85,0.85]
     use_filter=False
     num_points=30000
+    decay=2 # 平方衰减
 
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
@@ -66,16 +67,17 @@ def run_training(args):
     # num_points=20000
     # ratio=[0.7,0.7,0.4]
 
-    # radius=[0.7,0.7,1.0] ## daichen-L数据参数
-    # object_center=(0,0.35,4.95)
-    # ratio=[0.85,0.85,0.05]
-    # num_points=10000
+    radius=[0.8,0.8,1.0] ## daichen-L数据参数
+    object_center=(-0.1,0.0,5.0)
+    ratio=[0.73,0.85,0.1]
+    num_points=30000
 
-    radius=[1.2,1.2,1.0] ## daichen-7数据参数
-    object_center=(0.1,0.2,5.0)
-    ratio=[0.85,0.85,0.5]
-    num_points=15000
-    scale=0.015
+    # radius=[0.75,0.75,1.0] ## daichen-7数据参数
+    # object_center=(-0.3,0.0,5.0)
+    # ratio=[0.65,0.65,0.5]
+    # num_points=30000
+    # scale=0.01
+    # decay=0.1
 
     dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
     
@@ -126,7 +128,7 @@ def run_training(args):
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin,dataset.t0)
+            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
             # 在实测数据上，纯用高斯拟合效果更差
             # hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 
@@ -170,9 +172,9 @@ def run_training(args):
             gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
     
     ## 删除在最外一圈记录残差的点
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>gaussians.radius*ratio[0], True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>gaussians.radius*ratio[1], True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>gaussians.radius*ratio[2], True, False).flatten()
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
     prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
     gaussians.prune_points(prune_mask)
     print(f"prune number: {torch.sum(prune_mask).item()}")
