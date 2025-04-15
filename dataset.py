@@ -131,9 +131,10 @@ class NonconfDataset(Dataset):
 
             self.data=torch.from_numpy(self.data).to(self.device)
             
-            maxvalue=torch.max(mean_filter(self.data,window_size=20))
-            print("histogram maxvalue:",maxvalue)
-            self.data=self.data/maxvalue
+            # maxvalue=torch.max(mean_filter(self.data,window_size=20))
+            # print("histogram maxvalue:",maxvalue)
+            # self.data=self.data/maxvalue
+            self.data=self.data/torch.max(self.data)
 
             # 激光打在墙上的点
             self.laserPos=torch.from_numpy(data_dict["laserPos"]).float().to(self.device) # [N,3]

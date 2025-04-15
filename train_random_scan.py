@@ -43,11 +43,12 @@ def run_training(args):
     scale=0.015 # 默认大小
 
     # # 随机初始化
-    radius=[0.6,0.6,0.4] ## random-nt数据参数
-    object_center=(0.05,0,1.35)
-    # radius=[0.7,0.9,0.4] ## random-statue数据参数
-    # object_center=(0,0,1.1)
-    # scale=0.015
+    # radius=[0.6,0.6,0.4] ## random-nt数据参数
+    # object_center=(0.05,0,1.35)
+    # scale=0.01
+    radius=[0.7,0.9,0.4] ## random-statue数据参数
+    object_center=(0,0,1.1)
+    scale=0.015
     # radius=[0.6,0.6,0.6] ## random-bunny数据参数
     # object_center=(0,0,1.3)
     
@@ -100,7 +101,8 @@ def run_training(args):
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            # hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         

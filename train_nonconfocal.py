@@ -34,15 +34,18 @@ def run_training(args):
     torch.manual_seed(16)
 
     scale=0.005
+    ratio=[0.85,0.85,0.85]
 
-    # # 随机初始化
-    # radius=[0.2,0.2,0.2] ## K的参数
-    # object_center=(0,0,0.26)
-    # scale=0.002 # 范围太小了，所以需要片元小一点
+    # 随机初始化
+    radius=[0.2,0.2,0.2] ## K的参数
+    object_center=(0,0,0.26)
+    scale=0.002 # 范围太小了，所以需要片元小一点
+    ratio=[0.85,0.85,0.2]
 
-    radius=[0.6,0.6,0.6] ## bunny的参数
-    object_center=(0.0,0.0,0.8335)
-    scale=0.005
+    # radius=[1.0,1.0,0.6] ## bunny的参数
+    # object_center=(0.0,0.0,0.8335)
+    # scale=0.015
+
     # radius=[1.0,0.6,1.0] ## phasor_id3的参数
     # object_center=(-0.20,0.05,1.40)
     # radius=[0.825,0.75,0.25] ## phasor_id5的参数
@@ -100,7 +103,8 @@ def run_training(args):
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_nonconf_hist(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
+            # hist= scene.render_nonconf_hist(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
+            hist= scene.render_nonconf_hist2(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -113,7 +117,7 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr%10==0:  
+        if itr%50==0:  
             plot_hist(hist,gt_hist,itr)   
 
         if itr%50==0:
@@ -141,34 +145,10 @@ def run_training(args):
         if itr==501:
             gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
-        # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        # if itr==1000:
-        #     # 删除小于均值的位置
-        #     if thresh==0:
-        #         prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
-        #     else:
-        #         prune_mask=torch.where(gaussians.get_colour<=thresh, True, False).flatten()
-            
-        #     # 删除在最外一圈记录残差的点
-        #     ratio=0.85
-        #     prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
-        #     prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
-        #     prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
-        #     prune_mask_=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
-        #     prune_mask=torch.logical_or(prune_mask,prune_mask_)
-
-        #     gaussians.prune_points(prune_mask)
-        #     print(f"prune number: {torch.sum(prune_mask).item()}")
-
-        #     # 剩下的点全都进行拷贝
-        #     gaussians.densify_and_clone1(copy_num=2)
-        #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
-    
-    # 删除在最外一圈记录残差的点
-    ratio=0.85
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio, True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio, True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio, True, False).flatten()
+    ## 删除在最外一圈记录残差的点
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
     prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
     gaussians.prune_points(prune_mask)
     print(f"prune number: {torch.sum(prune_mask).item()}")

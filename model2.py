@@ -454,8 +454,9 @@ class Scene:
         sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
 
         # 概率密度,[N,M]
-        pdf=math.sqrt(0.5/math.pi) * (r/(r0*sigma))*torch.exp(-0.5*((r-r0)/sigma)**2) # 完整的径向分布
-        # pdf=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma # 高斯分布
+        # pdf=math.sqrt(0.5/math.pi) * (r/(r0*sigma))*torch.exp(-0.5*((r-r0)/sigma)**2) # 完整的径向分布
+        pdf=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma # 高斯分布
+        # pdf=(r-r0)*torch.exp(-0.5*((r-r0)/sigma)**2)/(sigma**2) # 瑞利分布
         pr=pdf*bin_resolution/2 # 概率, [N,M]
         pr=torch.clip(pr,0,1)
 
@@ -467,22 +468,37 @@ class Scene:
 
         return hist
     
-    # def render_conf_hist2(self, scan_point,bin_resolution,num_bins):
-    #     # 计算强度
-    #     intensity=self.gaussians.get_opacity.flatten()*self.gaussians.get_colour.flatten() # (N,)
+    # 利用极坐标的形式计算histogram
+    def render_conf_hist2(self, scan_point,bin_resolution,num_bins,t0=0,decay=2.0):
+        # 计算强度
+        intensity=self.gaussians.get_colour.flatten() # (N,)
 
-    #     # 计算片元中心的深度:scan_point is [1,3]
-    #     r0 = torch.norm(self.gaussians.means-scan_point, p=2, dim=1) # (N)
+        # 计算两组基的系数
+        coeff=self.gaussians.get_opacity.flatten().unsqueeze(1) # (N,1)
 
-    #     indices=r0*2/bin_resolution
-    #     indices=torch.clip(indices.long(),0,num_bins-1)
+        # 计算片元中心的深度:scan_point is [1,3]
+        r0 = torch.norm(self.gaussians.means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
 
-    #     intensity=intensity/r0**2 # (N)
-    #     hist=torch.zeros((num_bins,),device=intensity.device,dtype=torch.float32)
-        
-    #     hist.scatter_add_(0,indices,intensity)
+        r_=t0/2+bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
+        r=r_.view(1,num_bins) #(1,M)
 
-    #     return hist
+        sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
+        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
+
+        # 概率密度,[N,M]
+        pdf1=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma # 高斯分布
+        pdf2=(r-r0)*torch.exp(-0.5*((r-r0)/sigma)**2)/(sigma**2) # 瑞利分布
+        pdf=coeff*pdf1+(1-coeff)*pdf2 # 两个分布叠加
+        pr=pdf*bin_resolution/2 # 概率, [N,M]
+        pr=torch.clip(pr,0,1)
+
+        # print(torch.mean(torch.sum(pr,1)))
+
+        hist=intensity.unsqueeze(1)*pr # (N,M)
+        hist=torch.sum(hist,dim=0).flatten()
+        hist=hist/torch.pow(r_,decay)
+
+        return hist
 
     # 利用极坐标的形式计算histogram
     def render_nonconf_hist(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0):
@@ -516,6 +532,46 @@ class Scene:
         hist=hist*pr # (N,M)
         hist=torch.sum(hist,dim=0).flatten()
 
-        hist[0:100]=0
+        # hist[0:100]=0
+
+        return hist
+
+    def render_nonconf_hist2(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0):
+        # 计算强度
+        intensity=self.gaussians.get_colour.flatten() # (N,)
+
+        # 计算两组基的系数
+        coeff=self.gaussians.pre_act_opacities.flatten().unsqueeze(1) # (N,1)
+
+        # 计算激光点和相机点到两边的距离
+        r0_=torch.norm(cameraPos-cameraOrigin, p=2, dim=1)
+        r0_-=t0
+        if laserOrigin!=None:
+            r0_+=torch.norm(laserPos-laserOrigin, p=2, dim=1)
+
+        # 计算片元中心的深度
+        a = torch.norm(self.gaussians.means-laserPos, p=2, dim=1).unsqueeze(1) # (N,1)
+        b = torch.norm(self.gaussians.means-cameraPos, p=2, dim=1).unsqueeze(1) # (N,1)
+        r0=a+b+r0_ # (N,1)
+
+        r_=bin_resolution*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
+        r=r_.view(1,num_bins) #(1,M)
+
+        sigma=torch.mean(self.gaussians.get_scaling,dim=1).unsqueeze(1) # (N,1)
+        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
+
+        # 概率密度,[N,M]
+        pdf1=math.sqrt(1/math.pi)*torch.exp(-((r-r0)**2/4/sigma**2))/2/sigma # 高斯分布
+        pdf2=(r-r0)*torch.exp(-((r-r0)**2/4/sigma**2))/(2*sigma**2) # 瑞利分布
+        pdf=coeff*pdf1+(1-coeff)*pdf2 # 两个分布叠加
+        pr=pdf*bin_resolution
+        # print(torch.sum(pr,dim=1))
+        pr=torch.clip(pr,0,1)
+
+        hist=intensity.unsqueeze(1)/((a*b)) # (N,1)
+        hist=hist*pr # (N,M)
+        hist=torch.sum(hist,dim=0).flatten()
+
+        # hist[0:100]=0
 
         return hist

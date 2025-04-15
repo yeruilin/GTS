@@ -33,12 +33,15 @@ def run_training(args):
     # # 随机初始化
     # radius=0.65 ## cow数据的参数
     # object_center=(0.0,0.0,1.3)
-    # radius=[0.4,0.4,0.2] ## mannequin数据的参数
+    # radius=[0.4,0.4,0.4] ## mannequin数据的参数
     # object_center=(0.0,0.0,0.55)
+    # num_points=30000
     # scale=0.005
+
     # radius=[0.3,0.3,0.3] ## teapot数据的参数 
     # object_center=(0.0821,0.2270,1.1992)
     # scale=0.008
+    
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
@@ -52,7 +55,7 @@ def run_training(args):
     # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
     # object_center=(0.0,0.0,1.35)
     # ratio=[0.8,0.8,0.4]
-    # num_points=20000
+    # num_points=30000
     # use_filter=True
 
     # radius=[1.0,1.0,0.5] ## fk-dragon数据参数
@@ -63,14 +66,16 @@ def run_training(args):
     # radius=[1.0,1.0,0.5] ## fk-dragon10数据参数
     # object_center=(-0.1,0.1,1.35)
     # use_filter=True
-    # scale=0.001
-    # num_points=20000
+    # scale=0.008
+    # num_points=30000
     # ratio=[0.7,0.7,0.4]
 
     radius=[0.8,0.8,1.0] ## daichen-L数据参数
     object_center=(-0.1,0.0,5.0)
     ratio=[0.73,0.85,0.1]
+    scale=0.02
     num_points=30000
+    decay=0.1
 
     # radius=[0.75,0.75,1.0] ## daichen-7数据参数
     # object_center=(-0.3,0.0,5.0)
@@ -128,9 +133,9 @@ def run_training(args):
             gt_hist=data["hist"].reshape(-1)
 
             # Rendering histogram using gaussian splatting
-            hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
+            # hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
             # 在实测数据上，纯用高斯拟合效果更差
-            # hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
+            hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -146,12 +151,12 @@ def run_training(args):
         if itr%50==0:
             # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
             # 防止出现太大的片元
-            select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+            select_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
             gaussians.density_and_split1(select_mask,copy_num=1)
             print(f"split number: {torch.sum(select_mask).item()}")
 
             # 直接删除太大的片元
-            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.04, True, False).flatten()
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
 
