@@ -173,6 +173,70 @@ class NonconfDataset(Dataset):
         hist=self.data[i,:]
         return {"hist":hist,"point":scan_point}
 
+class PhfDataset(Dataset):
+    def __init__(self, data_dir,z=0.0,device="cuda"):
+        try:
+            self.data_dir=data_dir
+
+            data_path=data_dir+"setup.mat"
+            data_dict=loadmat(data_path)
+            self.bin_resolution=data_dict["bin_resolution"]
+            if type(self.bin_resolution)!=float:
+                self.bin_resolution=self.bin_resolution[0][0]
+            if self.bin_resolution<1e-9:
+                self.bin_resolution=self.bin_resolution*3e8
+
+            self.N=data_dict["N"]
+            if type(self.N)!=float:
+                self.N=self.N[0][0]
+            self.M=data_dict["M"]
+            if type(self.M)!=float:
+                self.M=self.M[0][0]
+
+            self.device=device
+            self.z=z
+
+            # 激光打在墙上的点
+            self.laserPos=torch.from_numpy(data_dict["laserPos"]).float().to(self.device) # [N,3]
+
+            # 激光出射位置
+            if "laserOrigin" in data_dict:
+                self.laserOrigin=torch.from_numpy(data_dict["laserOrigin"]).float().view(1,3).to(self.device)
+            else:
+                self.laserOrigin=None
+            print(self.laserOrigin)
+            # 相机对准在墙上的点
+            self.cameraPos=torch.from_numpy(data_dict["cameraPos"]).float().view(1,3).to(self.device) # [1,3]
+
+            # 相机位置
+            if "cameraOrigin" in data_dict:
+                self.cameraOrigin=torch.from_numpy(data_dict["cameraOrigin"]).float().view(1,3).to(self.device)
+            else:
+                self.cameraOrigin=self.cameraPos
+
+            # 索引0对应的时间
+            if data_dict["t0"]:
+                self.t0=torch.from_numpy(data_dict["t0"]).item() # 浮点数
+                print(self.t0)
+            else:
+                self.t0=0.0
+
+        except  Exception as e:
+            print(e)
+            exit()
+
+    def  __len__(self):
+        return self.N
+        
+    def __getitem__(self, i):
+        file=self.data_dir+f"{i}.mat"
+        hist=loadmat(file)["img"]
+        hist=torch.from_numpy(hist).to(self.device)
+        # print(hist.shape)
+
+        scan_point=self.laserPos[i,:]
+        return {"hist":hist,"point":scan_point}
+
 # NLOS dataset with arbitary scanning pattern
 class RandomScanDataset(Dataset):
     def __init__(self, data_path,device="cuda"):

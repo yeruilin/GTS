@@ -1,5 +1,7 @@
 output
 data
+*_data
 __pycache__
 temp*
 test*
+.vscode

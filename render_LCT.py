@@ -152,7 +152,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="./data/sledge.ply", type=str,
+        "--data_path", default="./temp/result.ply", type=str,
         help="Path to the pre-trained gaussian data to be rendered."
     )
     parser.add_argument(

@@ -1,3 +1,5 @@
+# 针对phasor数据的训练
+
 import os
 import torch
 import imageio
@@ -11,10 +13,6 @@ from dataset import *
 import time
 import scipy
 import matplotlib.pyplot as plt
-
-### 整个训练过程分为两步：
-### 1.首先按照类似于BP的思路只按照深度来优化color
-### 2.随后全面优化scale,opacity等参数
 
 from model2 import Scene, Gaussians
 
@@ -34,16 +32,6 @@ def run_training(args):
     scale=0.005
     ratio=[0.85,0.85,0.85]
 
-    # 随机初始化
-    radius=[0.2,0.2,0.2] ## K的参数
-    object_center=(0,0,0.26)
-    scale=0.002 # 范围太小了，所以需要片元小一点
-    ratio=[0.85,0.85,0.2]
-
-    # radius=[1.0,1.0,0.6] ## bunny的参数
-    # object_center=(0.0,0.0,0.8335)
-    # scale=0.015
-
     # radius=[1.0,0.6,1.0] ## phasor_id3的参数
     # object_center=(-0.20,0.05,1.40)
     # radius=[0.825,0.75,0.25] ## phasor_id5的参数
@@ -51,8 +39,13 @@ def run_training(args):
     radius=[0.7,0.7,0.15] ## phasor_id11的参数
     object_center=(0,0,0.95)
 
+    # gaussians = Gaussians(
+    #     init_type="points",load_path="shelves_100ms_lighton_data/points.mat",
+    #     device=args.device, isotropic=True,
+    #     colour_dim=1,scale=scale
+    # )
     gaussians = Gaussians(
-        num_points=20000, init_type="random",
+        num_points=3000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
@@ -62,7 +55,7 @@ def run_training(args):
     scene = Scene(gaussians)
     start=time.time()
     
-    dataset= NonconfDataset(args.data_path,device=args.device)
+    dataset= PhfDataset(args.data_path,device=args.device)
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
@@ -137,19 +130,19 @@ def run_training(args):
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
         
-        if itr==200:
-            gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
+        # if itr==200:
+        #     gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
             
-        if itr==501:
-            gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
+        # if itr==501:
+        #     gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
-    ## 删除在最外一圈记录残差的点
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
-    prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
-    gaussians.prune_points(prune_mask)
-    print(f"prune number: {torch.sum(prune_mask).item()}")
+    # ## 删除在最外一圈记录残差的点
+    # prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
+    # prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
+    # prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
+    # prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+    # gaussians.prune_points(prune_mask)
+    # print(f"prune number: {torch.sum(prune_mask).item()}")
 
     end=time.time()
     print("Training Completed. Training time:", end-start)
@@ -165,7 +158,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="shelves_100ms_lighton_data/", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(
