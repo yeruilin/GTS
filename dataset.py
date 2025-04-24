@@ -229,7 +229,7 @@ class PhfDataset(Dataset):
         return self.N
         
     def __getitem__(self, i):
-        file=self.data_dir+f"{i}.mat"
+        file=self.data_dir+f"{1+i}.mat"
         hist=loadmat(file)["img"]
         hist=torch.from_numpy(hist).to(self.device)
         # print(hist.shape)

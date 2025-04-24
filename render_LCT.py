@@ -45,7 +45,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>=0.001).squeeze()
+    mask=(gaussians.get_colour[:,0]>=0.002).squeeze()
     # mask=torch.logical_and(mask,(gaussians.means[:,2]<5.1).squeeze())
     # mask=torch.logical_and(mask,(gaussians.means[:,2]>4.9).squeeze())
     # mask=torch.logical_and(mask,(gaussians.means[:,0]<0.5).squeeze())
@@ -118,10 +118,10 @@ def create_renders(args):
             depth = gaussian_filter(depth, sigma=1.0)
         coloured_depth = colour_depth_q1_render(depth)  # (H, W, 3)
 
-        # ## 旋转180°
-        img=np.flipud(np.fliplr(img))
-        coloured_depth=np.flipud(np.fliplr(coloured_depth))
-        mask=np.flipud(np.fliplr(mask))
+        # # ## 旋转180°
+        # img=np.flipud(np.fliplr(img))
+        # coloured_depth=np.flipud(np.fliplr(coloured_depth))
+        # mask=np.flipud(np.fliplr(mask))
 
         # # ## 左右翻转(phasor数据都需要左右翻转)
         # img=np.fliplr(img)

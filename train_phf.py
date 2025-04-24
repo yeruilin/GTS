@@ -36,8 +36,8 @@ def run_training(args):
     # object_center=(-0.20,0.05,1.40)
     # radius=[0.825,0.75,0.25] ## phasor_id5的参数
     # object_center=(-0.625,1.25,0.95)
-    radius=[0.7,0.7,0.15] ## phasor_id11的参数
-    object_center=(0,0,0.95)
+    radius=[0.6,0.6,0.1] ## phasor_id11的参数
+    object_center=(0.1,0.1,0.95)
 
     # gaussians = Gaussians(
     #     init_type="points",load_path="shelves_100ms_lighton_data/points.mat",
@@ -45,7 +45,7 @@ def run_training(args):
     #     colour_dim=1,scale=scale
     # )
     gaussians = Gaussians(
-        num_points=3000, init_type="random",
+        num_points=20000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
@@ -130,8 +130,8 @@ def run_training(args):
             gaussians.prune_points(prune_mask)
             print(f"prune number: {torch.sum(prune_mask).item()}")
         
-        # if itr==200:
-        #     gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
+        if itr==200:
+            gaussians.densify_and_clone1(copy_num=1,std_multiple=3)
             
         # if itr==501:
         #     gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
@@ -158,7 +158,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_100ms_lighton_data/", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="shelves_100ms_lightoff_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
