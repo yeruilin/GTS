@@ -14,24 +14,7 @@ import time
 import scipy
 import matplotlib.pyplot as plt
 
-### 整个训练过程分为两步：
-### 1.首先按照类似于BP的思路只按照深度来优化color
-### 2.随后全面优化scale,opacity等参数
-
 from model2 import Scene, Gaussians
-
-def make_trainable(gaussians):
-
-    ### YOUR CODE HERE ###
-    # HINT: You can access and modify parameters from gaussians
-    gaussians.means.requires_grad=True
-    gaussians.pre_act_scales.requires_grad=True
-    gaussians.colours.requires_grad=True
-    gaussians.pre_act_opacities.requires_grad=True
-    
-    if not gaussians.is_isotropic:
-        gaussians.pre_act_quats.requires_grad=True
-
 
 ### 随机初始化训练模型
 def run_training(args):
@@ -82,7 +65,6 @@ def run_training(args):
     # 阶段一：清掉无用位置的点
     opt_param=OptimizationParams()
     gaussians.training_setup(opt_param)
-    make_trainable(gaussians)
 
     loss_list=[]
 
@@ -115,32 +97,32 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
         
-        if itr%50==0:
-            # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
-            # 防止出现太大的片元
-            select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
-            gaussians.density_and_split1(select_mask,copy_num=1)
-            print(f"split number: {torch.sum(select_mask).item()}")
+            if itr%50==0:
+                # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
+                # 防止出现太大的片元
+                select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+                gaussians.density_and_split1(select_mask,copy_num=1)
+                print(f"split number: {torch.sum(select_mask).item()}")
 
-            # 直接删除太大的片元
-            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
-            gaussians.prune_points(prune_mask)
-            print(f"prune number: {torch.sum(prune_mask).item()}")
+                # 直接删除太大的片元
+                prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+                gaussians.prune_points(prune_mask)
+                print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            save_ply(f"temp/result{itr}.ply",gaussians)
+                save_ply(f"temp/result{itr}.ply",gaussians)
+                
+                plot_hist(hist,gt_hist,itr)
+
+            if itr==200 or itr%500==0:
+                prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
+                gaussians.prune_points(prune_mask)
+                print(f"prune number: {torch.sum(prune_mask).item()}")
             
-            plot_hist(hist,gt_hist,itr)
-
-        if itr==200 or itr%500==0:
-            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
-            gaussians.prune_points(prune_mask)
-            print(f"prune number: {torch.sum(prune_mask).item()}")
-        
-        if itr==200:
-            gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
-            
-        if itr==501:
-            gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
+            if itr==200:
+                gaussians.densify_and_clone1(copy_num=2,std_multiple=3)
+                
+            if itr==501:
+                gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
         # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
         # if itr==1000:

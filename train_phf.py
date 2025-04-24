@@ -16,15 +16,6 @@ import matplotlib.pyplot as plt
 
 from model2 import Scene, Gaussians
 
-def make_trainable(gaussians):
-
-    ### YOUR CODE HERE ###
-    # HINT: You can access and modify parameters from gaussians
-    gaussians.means.requires_grad=True
-    gaussians.pre_act_scales.requires_grad=True
-    gaussians.colours.requires_grad=True
-    gaussians.pre_act_opacities.requires_grad=True
-
 ### 随机初始化训练模型
 def run_training(args):
     torch.manual_seed(16)
@@ -76,7 +67,6 @@ def run_training(args):
     # 阶段一：清掉无用位置的点
     opt_param=OptimizationParams()
     gaussians.training_setup(opt_param)
-    make_trainable(gaussians)
 
     loss_list=[]
 
@@ -100,6 +90,7 @@ def run_training(args):
             loss+=torch.mean((hist-gt_hist).abs())
         
         loss=loss/sample_num
+        torch.autograd.set_detect_anomaly(True)
         loss.backward()
         loss_list.append(loss.item())
             
@@ -108,33 +99,33 @@ def run_training(args):
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        if itr%50==0:  
-            plot_hist(hist,gt_hist,itr)   
+            if itr%50==0:  
+                plot_hist(hist,gt_hist,itr)   
 
-        if itr%50==0:
-            # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
-            # 防止出现太大的片元
-            select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
-            gaussians.density_and_split1(select_mask,copy_num=1)
-            print(f"split number: {torch.sum(select_mask).item()}")
+            if itr%50==0:
+                # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
+                # 防止出现太大的片元
+                select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+                gaussians.density_and_split1(select_mask,copy_num=1)
+                print(f"split number: {torch.sum(select_mask).item()}")
 
-            # 直接删除太大的片元
-            prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
-            gaussians.prune_points(prune_mask)
-            print(f"prune number: {torch.sum(prune_mask).item()}")
+                # 直接删除太大的片元
+                prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+                gaussians.prune_points(prune_mask)
+                print(f"prune number: {torch.sum(prune_mask).item()}")
 
-            save_ply(f"temp/result{itr}.ply",gaussians)
+                save_ply(f"temp/result{itr}.ply",gaussians)
 
-        if itr==200 or itr%500==0:
-            prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
-            gaussians.prune_points(prune_mask)
-            print(f"prune number: {torch.sum(prune_mask).item()}")
-        
-        if itr==200:
-            gaussians.densify_and_clone1(copy_num=1,std_multiple=3)
+            if itr==200 or itr%500==0:
+                prune_mask=torch.where(gaussians.get_colour<=1e-4, True, False).flatten()
+                gaussians.prune_points(prune_mask)
+                print(f"prune number: {torch.sum(prune_mask).item()}")
             
-        # if itr==501:
-        #     gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
+            if itr==200:
+                gaussians.densify_and_clone1(copy_num=1,std_multiple=3)
+                
+            # if itr==501:
+            #     gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
     # ## 删除在最外一圈记录残差的点
     # prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()

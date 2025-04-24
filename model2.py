@@ -343,10 +343,12 @@ class Gaussians:
         self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_)
 
     def training_setup(self, training_args):
-        self.percent_dense = 0.01
+        self.pre_act_scales.requires_grad=True
+        self.colours.requires_grad=True
+        self.pre_act_opacities.requires_grad=True
 
         l = [
-            {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
+            # {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
             {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
             {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self.pre_act_scales], 'lr': training_args.scaling_lr, "name": "scaling"}
@@ -375,9 +377,11 @@ class Gaussians:
 
     def prune_points(self, mask):
         valid_points_mask = ~mask
+
+        self.means = self.means[valid_points_mask]
+
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
-        self.means = optimizable_tensors["xyz"]
         self.colours = optimizable_tensors["colours"]
         self.pre_act_opacities = optimizable_tensors["opacity"]
         self.pre_act_scales = optimizable_tensors["scaling"]
@@ -404,7 +408,9 @@ class Gaussians:
         return optimizable_tensors
 
     def densification_postfix(self, new_xyz, new_colours, new_opacities, new_scaling):
-        d = {"xyz": new_xyz,
+        self.means = torch.cat([self.means,new_xyz],dim=0)
+
+        d = {
         "colours": new_colours,
         "opacity": new_opacities,
         "scaling" : new_scaling}
@@ -412,7 +418,6 @@ class Gaussians:
         # 将新生成的tensor拼接到之前的变量上
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
         # 然后重新赋值
-        self.means = optimizable_tensors["xyz"]
         self.colours = optimizable_tensors["colours"]
         self.pre_act_opacities = optimizable_tensors["opacity"]
         self.pre_act_scales = optimizable_tensors["scaling"]
