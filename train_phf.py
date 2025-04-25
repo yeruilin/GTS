@@ -90,7 +90,6 @@ def run_training(args):
             loss+=torch.mean((hist-gt_hist).abs())
         
         loss=loss/sample_num
-        torch.autograd.set_detect_anomaly(True)
         loss.backward()
         loss_list.append(loss.item())
             
