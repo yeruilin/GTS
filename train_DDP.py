@@ -1,4 +1,6 @@
 ### 测试分布式训练
+# DDP在所有卡上的参数都是完全共享的，这里我们只是对像素进行了不同的网格采样，代入计算loss，使得拟合的更准确。
+# 所以最后只需要保存一个卡上的参数就可以了
 
 import torch
 import torch.distributed as dist
@@ -189,7 +191,15 @@ def gather_all_parameters(rank, world_size, local_params,pixels):
         o[1::2, 0::2,:] = o_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
         o[1::2, 1::2,:] = o_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
         
-        return {"rho":rho.numpy(),"scale":scale,"o":o}
+        return {"rho":rho.numpy(),"scale":scale.numpy(),"o":o.numpy()}
+    
+    # if rank == 0:
+    #     # 在主GPU上拼接所有参数
+    #     rho = local_params['rho'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+    #     scale = local_params['scale'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+    #     o = local_params['o'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+    #     return {"rho":rho,"scale":scale,"o":o}
+    
     return None
 
 def save_parameters(all_params, save_dir="temp"):
@@ -211,7 +221,7 @@ def makegrid(minimalpos, maximalpos, gridsize,rank,world_size):
     gridsize = np.asarray(gridsize)
 
     # Number of pixels per direction
-    pixels = np.ceil(np.abs(minimalpos - maximalpos) / gridsize).astype(int)
+    pixels = np.ceil(np.abs(minimalpos - maximalpos) /2/gridsize).astype(int)*2
 
     # Unit vectors scaled by grid size
     vx = np.array([1, 0, 0]) * gridsize
@@ -252,9 +262,10 @@ def train(rank, args):
     scale=0.005
     
     # 场景参数
-    min_pos=[-0.5,-0.5,0.85] ## phasor_id11的参数
-    max_pos=(0.7,0.7,1.05)
-    grid_size=0.0075
+    min_pos=[-0.6,-0.6,0.85] ## phasor_id11的参数
+    max_pos=(0.8,0.8,1.05)
+    grid_size=[0.0075,0.0075,0.0075]
+    scale=0.002
 
     if rank==0:
         print("min_pos:",min_pos)

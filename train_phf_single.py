@@ -193,7 +193,7 @@ def train(args):
     # 场景参数
     min_pos=[-0.5,-0.5,0.85] ## phasor_id11的参数
     max_pos=(0.7,0.7,1.05)
-    grid_size=0.0075
+    grid_size=0.015
 
     print("min_pos:",min_pos)
     print("max_pos:",max_pos)
@@ -221,10 +221,29 @@ def train(args):
             {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
+
+    # 四个子像素的扰动
+    perturb=[]
+    temp=torch.zeros(xyz.shape).to(xyz.device)
+    temp[:,0]+=grid_size/4
+    temp[:,1]+=grid_size/4
+    perturb.append(temp)
+    temp=torch.zeros(xyz.shape).to(xyz.device)
+    temp[:,0]-=grid_size/4
+    temp[:,1]+=grid_size/4
+    perturb.append(temp)
+    temp=torch.zeros(xyz.shape).to(xyz.device)
+    temp[:,0]-=grid_size/4
+    temp[:,1]-=grid_size/4
+    perturb.append(temp)
+    temp=torch.zeros(xyz.shape).to(xyz.device)
+    temp[:,0]+=grid_size/4
+    temp[:,1]-=grid_size/4
+    perturb.append(temp)
     
     for itr in range(1,args.num_itrs):
         loss=0
-        sample_num=1 # sample_num和内存占用成正比，因此可以调小一些
+        sample_num=4 # sample_num和内存占用成正比，因此可以调小一些
 
         for iii in range(sample_num):        
             try:
@@ -238,7 +257,7 @@ def train(args):
             
             optimizer.zero_grad()
 
-            hist = model(xyz,laserPos)
+            hist = model(xyz+perturb[iii],laserPos)
 
             # 每个结点计算损失，DDP会自动将梯度all-reduce，实际上每个GPU分别进行了拟合
             loss += torch.mean((hist-gt_hist).abs())
