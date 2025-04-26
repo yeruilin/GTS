@@ -249,7 +249,7 @@ def train(rank, args):
         world_size=args.world_size
     )
 
-    dataset = PhfDataset2(args.data_path)
+    dataset = PhfDataset2(args.data_path,filter=True)
     bin_resolution=dataset.bin_resolution
     cameraOrigin=dataset.cameraOrigin.to(rank)
     cameraPos=dataset.cameraPos.to(rank)
@@ -354,7 +354,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_100ms_lightoff_data/", type=str,
+        "--data_path", default="shelves_50ms_lightoff_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

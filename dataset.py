@@ -239,7 +239,7 @@ class PhfDataset(Dataset):
 
 # 用于DDP的数据集
 class PhfDataset2(Dataset):
-    def __init__(self, data_dir,z=0.0):
+    def __init__(self, data_dir,z=0.0,filter=False):
         try:
             self.data_dir=data_dir
 
@@ -250,6 +250,7 @@ class PhfDataset2(Dataset):
                 self.bin_resolution=self.bin_resolution[0][0]
             if self.bin_resolution<1e-9:
                 self.bin_resolution=self.bin_resolution*3e8
+            self.filter=filter
 
             self.N=data_dict["N"]
             if type(self.N)!=float:
@@ -296,7 +297,8 @@ class PhfDataset2(Dataset):
         file=self.data_dir+f"{1+i}.mat"
         hist=loadmat(file)["img"]
         hist=torch.from_numpy(hist)
-        # print(hist.shape)
+        if self.filter:
+            hist=gaussian_filter(hist.reshape(-1,self.M),kernel_size=15,sigma=2.0)
 
         scan_point=self.laserPos[i,:]
         return {"hist":hist,"point":scan_point}
