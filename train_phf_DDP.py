@@ -27,7 +27,7 @@ def run_training(args):
     # object_center=(-0.20,0.05,1.40)
     # radius=[0.825,0.75,0.25] ## phasor_id5的参数
     # object_center=(-0.625,1.25,0.95)
-    radius=[0.6,0.6,0.1] ## phasor_id11的参数
+    radius=[0.7,0.7,0.1] ## phasor_id11的参数
     object_center=(0.1,0.1,0.95)
 
     # gaussians = Gaussians(
@@ -36,7 +36,7 @@ def run_training(args):
     #     colour_dim=1,scale=scale
     # )
     gaussians = Gaussians(
-        num_points=20000, init_type="random",
+        num_points=30000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )
@@ -72,7 +72,7 @@ def run_training(args):
 
     for itr in range(1,args.num_itrs):
         loss=0
-        sample_num=16
+        sample_num=4
 
         for iii in range(sample_num):
             try:
@@ -126,13 +126,13 @@ def run_training(args):
             # if itr==501:
             #     gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
         
-    # ## 删除在最外一圈记录残差的点
-    # prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
-    # prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
-    # prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
-    # prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
-    # gaussians.prune_points(prune_mask)
-    # print(f"prune number: {torch.sum(prune_mask).item()}")
+    ## 删除在最外一圈记录残差的点
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
+    prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
+    gaussians.prune_points(prune_mask)
+    print(f"prune number: {torch.sum(prune_mask).item()}")
 
     end=time.time()
     print("Training Completed. Training time:", end-start)

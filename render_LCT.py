@@ -45,7 +45,7 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>=0.002).squeeze()
+    mask=(gaussians.get_colour[:,0]>=0.0015).squeeze()
     # mask=torch.logical_and(mask,(gaussians.means[:,2]<5.1).squeeze())
     # mask=torch.logical_and(mask,(gaussians.means[:,2]>4.9).squeeze())
     # mask=torch.logical_and(mask,(gaussians.means[:,0]<0.5).squeeze())
