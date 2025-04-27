@@ -249,7 +249,7 @@ def train(rank, args):
         world_size=args.world_size
     )
 
-    dataset = PhfDataset2(args.data_path,filter=True)
+    dataset = PhfDataset2(args.data_path,filter=False)
     bin_resolution=dataset.bin_resolution
     cameraOrigin=dataset.cameraOrigin.to(rank)
     cameraPos=dataset.cameraPos.to(rank)
@@ -258,14 +258,18 @@ def train(rank, args):
 
     num_bins=dataset.M
     confocal=False
-    decay=1
+    decay=2
     scale=0.005
     
     # 场景参数
-    min_pos=[-0.6,-0.6,0.85] ## phasor_id11的参数
-    max_pos=(0.8,0.8,1.05)
+    min_pos=[-0.5,-0.5,0.85] ## phasor_id11的参数
+    max_pos=[0.8,0.8,1.1]
     grid_size=[0.0075,0.0075,0.0075]
     scale=0.002
+    # min_pos=[-1.8,0.5,0.5] ## office的参数
+    # max_pos=[0.0,1.8,1.3]
+    # grid_size=[0.0075,0.0075,0.012]
+    # scale=0.002
 
     if rank==0:
         print("min_pos:",min_pos)
@@ -311,7 +315,7 @@ def train(rank, args):
                 data = next(train_itr)
 
             laserPos=data["point"].to(rank)
-            gt_hist=data["hist"].reshape(-1).to(rank)
+            gt_hist=data["hist"].reshape(-1).to(rank)*2
             
             optimizer.zero_grad()
 
@@ -354,11 +358,11 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_50ms_lightoff_data/", type=str,
+        "--data_path", default="shelves_1000ms_lightoff_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
-        "--num_itrs", default=501, type=int,
+        "--num_itrs", default=1001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(

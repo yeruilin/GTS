@@ -1,7 +1,13 @@
 ### 测试分布式训练
+# DDP在所有卡上的参数都是完全共享的，这里我们只是对像素进行了不同的网格采样，代入计算loss，使得拟合的更准确。
+# 所以最后只需要保存一个卡上的参数就可以了
 
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn as nn
+import torch.optim as optim
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -56,9 +62,9 @@ class GaussianModel(nn.Module):
     
     def get_all_parameters(self):
         return {
-            'scale': self.pre_act_scales.detach(),
-            'rho': self.colours.detach(),
-            'o': self.pre_act_opacities.detach()
+            'scale': self.get_scaling.detach(),
+            'rho': self.get_colour.detach(),
+            'o': self.get_opacity.detach()
         }
     
     def __len__(self):
@@ -150,14 +156,72 @@ class GaussianModel(nn.Module):
         else:
             return self.render_nonconf_hist2(means,scan_point)
 
+def gather_all_parameters(rank, world_size, local_params,pixels):
+    """
+    收集所有GPU上的参数到主GPU
+    返回: 主GPU上包含所有参数的字典
+    """
+    # 为每个参数创建存储列表
+    scale_list = [torch.zeros_like(local_params['scale']) for _ in range(world_size)]
+    rho_list = [torch.zeros_like(local_params['rho']) for _ in range(world_size)]
+    o_list = [torch.zeros_like(local_params['o']) for _ in range(world_size)]
+    
+    # 收集所有GPU的参数
+    dist.all_gather(scale_list, local_params['scale'])
+    dist.all_gather(rho_list, local_params['rho'])
+    dist.all_gather(o_list, local_params['o'])
+    
+    if rank == 0:
+        # 在主GPU上拼接所有参数
+        rho = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
+        rho[0::2, 0::2,:] = rho_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()# 按照奇偶位置插入
+        rho[0::2, 1::2,:] = rho_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        rho[1::2, 0::2,:] = rho_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        rho[1::2, 1::2,:] = rho_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
 
-def makegrid(minimalpos, maximalpos, gridsize):
+        scale = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
+        scale[0::2, 0::2,:] = scale_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        scale[0::2, 1::2,:] = scale_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        scale[1::2, 0::2,:] = scale_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        scale[1::2, 1::2,:] = scale_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+
+        o = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
+        o[0::2, 0::2,:] = o_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        o[0::2, 1::2,:] = o_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        o[1::2, 0::2,:] = o_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        o[1::2, 1::2,:] = o_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+        
+        return {"rho":rho.numpy(),"scale":scale.numpy(),"o":o.numpy()}
+    
+    # if rank == 0:
+    #     # 在主GPU上拼接所有参数
+    #     rho = local_params['rho'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+    #     scale = local_params['scale'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+    #     o = local_params['o'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+    #     return {"rho":rho,"scale":scale,"o":o}
+    
+    return None
+
+def save_parameters(all_params, save_dir="temp"):
+    os.makedirs(save_dir, exist_ok=True)
+
+    numpy_params = {k: v.numpy() for k, v in all_params.items()}
+    torch.save(numpy_params, os.path.join(save_dir, "result.npz"))
+    
+    print(f"All parameters saved to {save_dir}")
+
+
+def makegrid(minimalpos, maximalpos, gridsize,rank,world_size):
+    assert world_size==4
+    xx=rank//2
+    yy=rank-2*xx
+
     minimalpos = np.asarray(minimalpos)
     maximalpos = np.asarray(maximalpos)
     gridsize = np.asarray(gridsize)
 
     # Number of pixels per direction
-    pixels = np.ceil(np.abs(minimalpos - maximalpos) / gridsize).astype(int)
+    pixels = np.ceil(np.abs(minimalpos - maximalpos) /2/gridsize).astype(int)*2
 
     # Unit vectors scaled by grid size
     vx = np.array([1, 0, 0]) * gridsize
@@ -166,8 +230,8 @@ def makegrid(minimalpos, maximalpos, gridsize):
 
     # Generate grid points
     pts = []
-    for x in range(pixels[0]):
-        for y in range(pixels[1]):
+    for x in range(xx,pixels[0],2):
+        for y in range(yy,pixels[1],2):
             for z in range(pixels[2]):
                 tmp = minimalpos + x * vx + y * vy + z * vz
                 pts.append(tmp)
@@ -176,9 +240,16 @@ def makegrid(minimalpos, maximalpos, gridsize):
     return pts,pixels
 
 
-def train(args):
-    rank=args.device
-    dataset = PhfDataset2(args.data_path)
+def train(rank, args):
+    # init DDP
+    dist.init_process_group(
+        backend='nccl',
+        init_method='tcp://127.0.0.1:12345',
+        rank=rank,
+        world_size=args.world_size
+    )
+
+    dataset = PhfDataset2(args.data_path,filter=True)
     bin_resolution=dataset.bin_resolution
     cameraOrigin=dataset.cameraOrigin.to(rank)
     cameraPos=dataset.cameraPos.to(rank)
@@ -191,55 +262,42 @@ def train(args):
     scale=0.005
     
     # 场景参数
-    min_pos=[-0.5,-0.5,0.85] ## phasor_id11的参数
+    min_pos=[-0.6,-0.6,0.85] ## phasor_id11的参数
     max_pos=(0.8,0.8,1.05)
-    grid_size=0.015
+    grid_size=[0.0075,0.0075,0.0075]
+    scale=0.002
 
-    print("min_pos:",min_pos)
-    print("max_pos:",max_pos)
-    print("grid_size:",grid_size)
-    print("bin resolution:",bin_resolution)
-    print("cameraOrigin:",cameraOrigin)
-    print("cameraPos:",cameraPos)
-    print("t0:",dataset.t0)
-
-    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
+    if rank==0:
+        print("min_pos:",min_pos)
+        print("max_pos:",max_pos)
+        print("grid_size:",grid_size)
+        print("bin resolution:",bin_resolution)
+        print("cameraOrigin:",cameraOrigin)
+        print("cameraPos:",cameraPos)
+        print("t0:",dataset.t0)
+    
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=args.world_size, rank=rank, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(dataset, batch_size=1, sampler=sampler)
     train_itr = iter(train_loader)
     
     # 生成当前GPU上的高斯中心
-    xyz,pixels=makegrid(min_pos,max_pos,grid_size)
+    xyz,pixels=makegrid(min_pos,max_pos,grid_size,rank,args.world_size)
     xyz=torch.from_numpy(xyz).float().to(rank)
     print(xyz.shape)
     
     # 创建模型并移动到当前GPU
     model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal,laserOrigin,cameraPos,cameraOrigin).to(rank)
+
+    ddp_model = DDP(model, device_ids=[rank])
     
     # 优化器
+    # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
     l = [
             {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
             {'params': [model.pre_act_opacities], 'lr': 0.025, "name": "opacity"},
             {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
-
-    # # 四个子像素的扰动
-    # perturb=[]
-    # temp=torch.zeros(xyz.shape).to(xyz.device)
-    # temp[:,0]+=grid_size/4
-    # temp[:,1]+=grid_size/4
-    # perturb.append(temp)
-    # temp=torch.zeros(xyz.shape).to(xyz.device)
-    # temp[:,0]-=grid_size/4
-    # temp[:,1]+=grid_size/4
-    # perturb.append(temp)
-    # temp=torch.zeros(xyz.shape).to(xyz.device)
-    # temp[:,0]-=grid_size/4
-    # temp[:,1]-=grid_size/4
-    # perturb.append(temp)
-    # temp=torch.zeros(xyz.shape).to(xyz.device)
-    # temp[:,0]+=grid_size/4
-    # temp[:,1]-=grid_size/4
-    # perturb.append(temp)
     
     for itr in range(1,args.num_itrs):
         loss=0
@@ -257,7 +315,7 @@ def train(args):
             
             optimizer.zero_grad()
 
-            hist = model(xyz,laserPos)
+            hist = ddp_model(xyz,laserPos)
 
             # 每个结点计算损失，DDP会自动将梯度all-reduce，实际上每个GPU分别进行了拟合
             loss += torch.mean((hist-gt_hist).abs())
@@ -266,35 +324,37 @@ def train(args):
         loss.backward()
         optimizer.step()
 
-        print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
+        if rank == 0:
+            print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
 
-        with torch.no_grad():
-            if itr%50==0:  
-                plot_hist(hist,gt_hist,itr)
-
-            if itr%1000==0:
-                rho = model.get_colour.detach().view(pixels[0],pixels[1],pixels[2]).cpu().numpy()
-                o = model.get_opacity.detach().view(pixels[0],pixels[1],pixels[2]).cpu().numpy()
-                scale= model.get_scaling.detach().view(pixels[0],pixels[1],pixels[2]).cpu().numpy()
-                scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"o":o,"scale":scale})
-
-    # visualization
-    intensity=np.max(rho,axis=2)
-    depth=np.argmax(rho,axis=2)
-    intensity=(intensity-np.min(intensity))/(np.max(intensity)-np.min(intensity))
-    depth=(depth-np.min(depth))/(np.max(depth)-np.min(depth))
-    plt.figure()
-    plt.subplot(1,2,1)
-    plt.imshow(depth)
-    plt.subplot(1,2,2)
-    plt.imshow(intensity)
-    plt.savefig("temp/result.png")
+            with torch.no_grad():
+                if itr%50==0:  
+                    plot_hist(hist,gt_hist,itr)
     
+    # 将所有参数汇聚到主节点一起保存
+    local_params = model.get_all_parameters()
+    dic = gather_all_parameters(rank, args.world_size, local_params,pixels)
+    
+    if rank == 0:
+        scipy.io.savemat("temp/result.mat",dic)
+        rho=dic["rho"]
+        intensity=np.max(rho,axis=2)
+        depth=np.argmax(rho,axis=2)
+        intensity=(intensity-np.min(intensity))/(np.max(intensity)-np.min(intensity))
+        depth=(depth-np.min(depth))/(np.max(depth)-np.min(depth))
+        plt.figure()
+        plt.subplot(1,2,1)
+        plt.imshow(depth)
+        plt.subplot(1,2,2)
+        plt.imshow(intensity)
+        plt.savefig("temp/result.png")
+
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_100ms_lightoff_data/", type=str,
+        "--data_path", default="shelves_50ms_lighton_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
@@ -302,9 +362,15 @@ if __name__ == "__main__":
         help="Number of iterations to train the model."
     )
     parser.add_argument(
-        "--device", default="cuda:0", type=str,
+        "--world_size", default=4, type=int,
         help="Number of cuda."
     )
     arg = parser.parse_args()
     
-    train(arg)
+    # 使用多进程启动训练
+    mp.spawn(
+        train,
+        args=(arg,),
+        nprocs=arg.world_size,
+        join=True
+    )
