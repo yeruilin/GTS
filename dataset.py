@@ -382,7 +382,53 @@ class RandomScanDataset(Dataset):
             print(self.grid.shape)
 
         except  Exception as e:
-            print("no such file!")
+            print(e)
+            exit()
+
+    def  __len__(self):
+        return self.data.shape[0]
+        
+    def __getitem__(self, i):
+        scan_point=self.grid[i,:]
+        hist=self.data[i,:]
+        return {"hist":hist,"point":scan_point}
+
+class RandomScanDataset2(Dataset):
+    def __init__(self, data_path):
+        try:
+            data_dict=loadmat(data_path)
+            self.bin_resolution=data_dict["bin_resolution"]
+            if type(self.bin_resolution)!=float:
+                self.bin_resolution=self.bin_resolution[0][0]
+            if self.bin_resolution<1e-9:
+                self.bin_resolution=self.bin_resolution*3e8
+            self.width=data_dict["width"]
+            if type(self.width)!=float:
+                self.width=self.width[0][0]+0.0
+            
+            self.data=data_dict["data"] # [sample_num,M]
+            self.N=64
+            self.M=self.data.shape[-1]
+
+            self.data=torch.from_numpy(self.data)
+            self.data[:,-1]=0
+            
+            # 数据归一化
+            self.data=self.data/torch.max(self.data)
+
+            # 扫描网格
+            self.grid=torch.from_numpy(data_dict["grid"]) # [N,3]
+            print(self.grid.shape)
+
+            # 索引0对应的时间
+            if "t0" in data_dict.keys():
+                self.t0=torch.from_numpy(data_dict["t0"]).item() # 浮点数
+                print(self.t0)
+            else:
+                self.t0=0.0
+
+        except  Exception as e:
+            print(e)
             exit()
 
     def  __len__(self):
