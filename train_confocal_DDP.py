@@ -1,6 +1,5 @@
 ### 测试分布式训练
-# DDP在所有卡上的参数都是完全共享的，这里我们只是对像素进行了不同的网格采样，代入计算loss，使得拟合的更准确。
-# 所以最后只需要保存一个卡上的参数就可以了
+# 训练共焦数据
 
 import torch
 import torch.distributed as dist
@@ -62,9 +61,9 @@ class GaussianModel(nn.Module):
     
     def get_all_parameters(self):
         return {
-            'scale': self.get_scaling.detach(),
-            'rho': self.get_colour.detach(),
-            'o': self.get_opacity.detach()
+            'scale': self.get_scaling.clone().detach(),
+            'rho': self.get_colour.clone().detach(),
+            'o': self.get_opacity.clone().detach()
         }
     
     def __len__(self):
@@ -249,31 +248,52 @@ def train(rank, args):
         world_size=args.world_size
     )
 
-    dataset = PhfDataset2(args.data_path,filter=True)
-    bin_resolution=dataset.bin_resolution
-    cameraOrigin=dataset.cameraOrigin.to(rank)
-    cameraPos=dataset.cameraPos.to(rank)
-    if dataset.laserOrigin!=None:
-        laserOrigin=dataset.laserOrigin.to(rank)
-
-    num_bins=dataset.M
-    confocal=False
+    confocal=True
     decay=1
     scale=0.005
-    
+
     # 场景参数
-    min_pos=[-0.6,-0.6,0.85] ## phasor_id11的参数
-    max_pos=(0.8,0.8,1.05)
-    grid_size=[0.0075,0.0075,0.0075]
-    scale=0.002
+    # min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
+    # max_pos=[0.4,0.6,1.5]
+    # grid_size=[0.005,0.005,0.005]
+    
+    # radius=[0.5,0.5,0.4] ## bunny的参数
+    # object_center=(0.0037,0.1018,0.8335)
+    # scale=0.015
+
+    # min_pos=[-1.0,-0.6,1.25] ## fk-bike数据参数
+    # max_pos=[1.0,0.9,1.5]
+    # grid_size=0.005
+    #### ratio=[0.8,0.5,0.2]
+
+    # min_pos=[-1.0,-1.0,1.05] ## fk-teaser数据参数
+    # max_pos=[1.0,1.0,1.9]
+    # grid_size=0.0075
+
+    # min_pos=[-1.0,-1.0,1.05] ## fk-dragon数据参数
+    # max_pos=[1.0,1.0,1.65]
+    # grid_size=0.0075
+
+    # min_pos=[-0.8,-0.8,4.8] ## daichen-L数据参数
+    # max_pos=[0.2,0.8,5.2]
+    # grid_size=0.005
+    # decay=2
+
+    min_pos=[-1.0,-0.75,4.8] ## daichen-7数据参数
+    max_pos=[0.5,0.75,5.2]
+    grid_size=0.0075
+    decay=0.1
+
+    dataset= ConfDataset(args.data_path,filter=False)
+    bin_resolution=dataset.bin_resolution
+
+    num_bins=dataset.M
 
     if rank==0:
         print("min_pos:",min_pos)
         print("max_pos:",max_pos)
         print("grid_size:",grid_size)
         print("bin resolution:",bin_resolution)
-        print("cameraOrigin:",cameraOrigin)
-        print("cameraPos:",cameraPos)
         print("t0:",dataset.t0)
     
     sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=args.world_size, rank=rank, shuffle=True)
@@ -286,7 +306,7 @@ def train(rank, args):
     print(xyz.shape)
     
     # 创建模型并移动到当前GPU
-    model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal,laserOrigin,cameraPos,cameraOrigin).to(rank)
+    model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal).to(rank)
 
     ddp_model = DDP(model, device_ids=[rank])
     
@@ -330,11 +350,17 @@ def train(rank, args):
             with torch.no_grad():
                 if itr%50==0:  
                     plot_hist(hist,gt_hist,itr)
+                
+                if itr%500==0:
+                    local_params = model.get_all_parameters()
+                    rho =local_params["rho"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    scale= local_params["scale"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"o":o,"scale":scale})
     
-    # 将所有参数汇聚到主节点一起保存
     local_params = model.get_all_parameters()
     dic = gather_all_parameters(rank, args.world_size, local_params,pixels)
-    
+
     if rank == 0:
         scipy.io.savemat("temp/result.mat",dic)
         rho=dic["rho"]
@@ -354,11 +380,11 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_50ms_lighton_data/", type=str,
+        "--data_path", default="data/daichen_7.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
-        "--num_itrs", default=501, type=int,
+        "--num_itrs", default=1001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(

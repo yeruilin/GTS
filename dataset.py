@@ -113,6 +113,55 @@ class NLOSDataset(Dataset):
         hist=self.data[ii,jj,:]
         return {"hist":hist,"point":scan_point}
 
+# 用于DDP的数据集
+class ConfDataset(Dataset):
+    def __init__(self, data_path,z=0.0,filter=False):
+        try:
+            data_dict=loadmat(data_path)
+            self.bin_resolution=data_dict["bin_resolution"]
+            if type(self.bin_resolution)!=float:
+                self.bin_resolution=self.bin_resolution[0][0]
+            if self.bin_resolution<1e-9:
+                self.bin_resolution=self.bin_resolution*3e8
+            self.width=data_dict["width"]
+            if type(self.width)!=float:
+                self.width=self.width[0][0]+0.0
+            
+            self.data=data_dict["data"] # [N,N,M]
+            self.N=self.data.shape[0]
+            self.M=self.data.shape[-1]
+            self.step=self.width/(self.N-1)
+            self.z=z
+
+            self.data=torch.from_numpy(self.data)
+            self.data[:,:,-1]=0
+            
+            if filter:
+                self.data=gaussian_filter(self.data.reshape(-1,self.M),kernel_size=10,sigma=1.0)
+                self.data=self.data.view(self.N,self.N,-1)
+
+            # 数据归一化
+            self.data=self.data/torch.max(self.data)
+
+            if "t0" in data_dict:
+                self.t0=torch.from_numpy(data_dict["t0"]).item() # 浮点数
+                print(self.t0)
+            else:
+                self.t0=0.0
+
+        except  Exception as e:
+            print(e)
+            exit()
+
+    def  __len__(self):
+        return self.N*self.N
+        
+    def __getitem__(self, i):
+        ii,jj=divmod(i, self.N)
+        scan_point=torch.Tensor((-self.width/2+self.step*ii,-self.width/2+self.step*jj,self.z)).flatten()
+        hist=self.data[ii,jj,:]
+        return {"hist":hist,"point":scan_point}
+
 class NonconfDataset(Dataset):
     def __init__(self, data_path,z=0.0,device="cuda"):
         try:

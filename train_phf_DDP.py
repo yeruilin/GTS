@@ -62,9 +62,9 @@ class GaussianModel(nn.Module):
     
     def get_all_parameters(self):
         return {
-            'scale': self.get_scaling.detach(),
-            'rho': self.get_colour.detach(),
-            'o': self.get_opacity.detach()
+            'scale': self.get_scaling.clone().detach(),
+            'rho': self.get_colour.clone().detach(),
+            'o': self.get_opacity.clone().detach()
         }
     
     def __len__(self):
@@ -266,8 +266,12 @@ def train(rank, args):
     max_pos=[0.8,0.8,1.1]
     grid_size=[0.0075,0.0075,0.0075]
     scale=0.002
-    # min_pos=[-1.8,0.5,0.5] ## office的参数
+    # min_pos=[-1.8,0.5,0.4] ## office phasor id4的参数
     # max_pos=[0.0,1.8,1.3]
+    # grid_size=[0.0075,0.0075,0.012]
+    # scale=0.002
+    # min_pos=[-1.2,-0.55,0.5] ## office phasor id1-3的参数
+    # max_pos=[0.8,0.65,1.4]
     # grid_size=[0.0075,0.0075,0.012]
     # scale=0.002
 
@@ -315,7 +319,7 @@ def train(rank, args):
                 data = next(train_itr)
 
             laserPos=data["point"].to(rank)
-            gt_hist=data["hist"].reshape(-1).to(rank)*2
+            gt_hist=data["hist"].reshape(-1).to(rank)
             
             optimizer.zero_grad()
 
@@ -334,11 +338,17 @@ def train(rank, args):
             with torch.no_grad():
                 if itr%50==0:  
                     plot_hist(hist,gt_hist,itr)
+                
+                if itr%500==0:
+                    local_params = model.get_all_parameters()
+                    rho =local_params["rho"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    scale= local_params["scale"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"o":o,"scale":scale})
     
-    # 将所有参数汇聚到主节点一起保存
     local_params = model.get_all_parameters()
     dic = gather_all_parameters(rank, args.world_size, local_params,pixels)
-    
+
     if rank == 0:
         scipy.io.savemat("temp/result.mat",dic)
         rho=dic["rho"]
@@ -358,11 +368,11 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_1000ms_lightoff_data/", type=str,
+        "--data_path", default="office10ms_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
-        "--num_itrs", default=1001, type=int,
+        "--num_itrs", default=2001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(

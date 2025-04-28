@@ -46,7 +46,7 @@ def run_training(args):
     # use_filter=True
 
     # radius=[1.2,1.2,0.6] ## fk-teaser数据参数
-    # object_center=(0.0,0.0,1.35)
+    # object_center=(0.0,0.0,1.5)
     # ratio=[0.8,0.8,0.4]
     # num_points=30000
     # use_filter=True

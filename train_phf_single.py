@@ -178,7 +178,7 @@ def makegrid(minimalpos, maximalpos, gridsize):
 
 def train(args):
     rank=args.device
-    dataset = PhfDataset2(args.data_path)
+    dataset = PhfDataset2(args.data_path,filter=False)
     bin_resolution=dataset.bin_resolution
     cameraOrigin=dataset.cameraOrigin.to(rank)
     cameraPos=dataset.cameraPos.to(rank)
@@ -187,13 +187,17 @@ def train(args):
 
     num_bins=dataset.M
     confocal=False
-    decay=1
+    decay=2
     scale=0.005
     
     # 场景参数
-    min_pos=[-0.5,-0.5,0.85] ## phasor_id11的参数
-    max_pos=(0.8,0.8,1.05)
+    # min_pos=[-0.5,-0.5,0.85] ## phasor_id11的参数
+    # max_pos=(0.8,0.8,1.05)
+    # grid_size=0.015
+    min_pos=[-1.1,-0.55,0.5] ## office phasor id1-3的参数
+    max_pos=[0.7,0.65,1.4]
     grid_size=0.015
+    scale=0.002
 
     print("min_pos:",min_pos)
     print("max_pos:",max_pos)
@@ -294,11 +298,11 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_100ms_lightoff_data/", type=str,
+        "--data_path", default="office10ms_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
-        "--num_itrs", default=501, type=int,
+        "--num_itrs", default=10001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(
