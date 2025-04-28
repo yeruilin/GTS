@@ -6,13 +6,10 @@ import numpy as np
 
 from PIL import Image
 from tqdm import tqdm
-from model_old import Gaussians, Scene
-# from model2 import Gaussians,Scene
+from scene import Scene
+from gaussian import Gaussians
 from data_utils import colour_depth_q1_render,save_ply
-from pytorch3d.renderer.cameras import PerspectiveCameras,FoVPerspectiveCameras, look_at_view_transform
-
-import math
-import matplotlib.pyplot as plt
+from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform
 
 from scipy.ndimage import uniform_filter,convolve,gaussian_filter
 
@@ -26,7 +23,7 @@ def create_renders(args):
     num_views = 32
     azims = np.linspace(-180, 180, num_views)
 
-    debug_root = os.path.join(args.out_path, "q1_render")
+    debug_root = os.path.join(args.out_path, "render")
     if not os.path.exists(debug_root):
         os.makedirs(debug_root, exist_ok=True)
 
@@ -46,15 +43,10 @@ def create_renders(args):
 
     mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
     mask=(gaussians.get_colour[:,0]>=0.0015).squeeze()
-    # mask=torch.logical_and(mask,(gaussians.means[:,2]<5.1).squeeze())
-    # mask=torch.logical_and(mask,(gaussians.means[:,2]>4.9).squeeze())
-    # mask=torch.logical_and(mask,(gaussians.means[:,0]<0.5).squeeze())
 
     gaussians.colours=gaussians.colours[mask]
     gaussians.pre_act_opacities=gaussians.pre_act_opacities[mask]
-    gaussians.pre_act_quats=gaussians.pre_act_quats[mask]
     gaussians.pre_act_scales=gaussians.pre_act_scales[mask]
-    # gaussians.pre_act_scales=torch.ones_like(gaussians.pre_act_scales[mask],device=args.device)*math.log(0.005)
     gaussians.means=gaussians.means[mask]
 
     save_ply("temp/result_show.ply",gaussians)
@@ -73,7 +65,6 @@ def create_renders(args):
     print(torch.max(gaussians.get_scaling))
 
     # Creating the scene with the loaded gaussians
-    scene = Scene(gaussians)
 
     # Preprocessing for ease of rendering
     new_points = gaussians.means - gaussians.means.mean(dim=0, keepdims=True)
@@ -81,7 +72,7 @@ def create_renders(args):
 
     scene = Scene(gaussians)
 
-    bg_colour=(0.0, 0.0, 0.0) # 背景颜色
+    bg_colour=(1,1,1) # 背景颜色
     use_filter=False # 后处理
 
     imgs = []
@@ -96,7 +87,7 @@ def create_renders(args):
 
         with torch.no_grad():
             # Rendering scene using gaussian splatting
-            img, depth, mask,_,_ = scene.render(camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
+            img, depth, mask= scene.render(camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
 
         debug_path = os.path.join(debug_root, f"{i:03d}.png")
         img = img.detach().cpu().numpy()
@@ -133,7 +124,6 @@ def create_renders(args):
         # coloured_depth=np.rot90(coloured_depth)
         # mask=np.rot90(mask)
 
-        # concat = np.concatenate([np.transpose(img,[1,0,2]), np.transpose(coloured_depth,[1,0,2]), np.transpose(mask,[1,0,2])], axis = 1)
         concat = np.concatenate([img,coloured_depth, mask], axis = 1)
         resized = Image.fromarray(concat).resize((256*3, 256))
         resized.save(debug_path)
