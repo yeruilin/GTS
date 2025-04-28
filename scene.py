@@ -1,18 +1,186 @@
 import math
 import torch
-import torch.nn as nn
 import numpy as np
 
 from typing import Tuple, Optional
-from pytorch3d.ops.knn import knn_points
-from pytorch3d.transforms import quaternion_to_matrix
+from gaussian import Gaussians
 from pytorch3d.renderer.cameras import PerspectiveCameras
-from data_utils import load_gaussians_from_ply, colours_from_spherical_harmonics
+from pytorch3d.transforms import quaternion_to_matrix
 
 class Scene:
     def __init__(self, gaussians: Gaussians):
         self.gaussians = gaussians
         self.device = self.gaussians.device
+    
+    def compute_cov_3D(self, quats: torch.Tensor, scales: torch.Tensor, is_isotropic=True):
+        """
+        Computes the covariance matrices of 3D Gaussians using equation (6) of the 3D
+        Gaussian Splatting paper.
+
+        Link: https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf
+
+        Args:
+            quats   :   A torch.Tensor of shape (N, 4) representing the rotation
+                        components of 3D Gaussians in quaternion form.
+            scales  :   If is_isotropic is True, scales is will be a torch.Tensor of shape (N, 1)
+                        If is_isotropic is False, scales is will be a torch.Tensor of shape (N, 3).
+                        Represents the scaling components of the 3D Gaussians.
+
+        Returns:
+            cov_3D  :   A torch.Tensor of shape (N, 3, 3)
+        """
+
+        if is_isotropic:
+            scales=scales*scales
+            scales=scales.repeat((1,3))
+            cov_3D=torch.diag_embed(scales) # (N, 3, 3)
+        else:
+            R=quaternion_to_matrix(quats) # (N,3,3)
+            scales=scales*scales
+            cov_3D=torch.diag_embed(scales) # (N, 3, 3)
+            cov_3D = torch.bmm(R,torch.bmm(cov_3D,R.transpose(1,2)))  # (N, 3, 3)
+
+        return cov_3D
+
+    def _compute_jacobian(self, means_3D: torch.Tensor, camera: PerspectiveCameras, img_size: Tuple):
+
+        if camera.in_ndc():
+            raise RuntimeError
+
+        fx, fy = camera.focal_length.flatten()
+        W, H = img_size
+
+        half_tan_fov_x = 0.5 * W / fx
+        half_tan_fov_y = 0.5 * H / fy
+
+        view_transform = camera.get_world_to_view_transform()
+        means_view_space = view_transform.transform_points(means_3D)
+
+        tx = means_view_space[:, 0]
+        ty = means_view_space[:, 1]
+        tz = means_view_space[:, 2]
+        tz2 = tz*tz
+
+        lim_x = 1.3 * half_tan_fov_x
+        lim_y = 1.3 * half_tan_fov_y
+
+        tx = torch.clamp(tx/tz, -lim_x, lim_x) * tz
+        ty = torch.clamp(ty/tz, -lim_y, lim_y) * tz
+
+        J = torch.zeros((len(tx), 2, 3))  # (N, 2, 3)
+        J = J.to(self.device)
+
+        J[:, 0, 0] = fx / tz
+        J[:, 1, 1] = fy / tz
+        J[:, 0, 2] = -(fx * tx) / tz2
+        J[:, 1, 2] = -(fy * ty) / tz2
+
+        return J  # (N, 2, 3)
+    
+    def compute_cov_2D(
+        self, means_3D: torch.Tensor, quats: torch.Tensor, scales: torch.Tensor,
+        camera: PerspectiveCameras, img_size: Tuple
+    ):
+        """
+        Computes the covariance matrices of 2D Gaussians using equation (5) of the 3D
+        Gaussian Splatting paper.
+
+        Link: https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_low.pdf
+
+        Args:
+            quats       :   A torch.Tensor of shape (N, 4) representing the rotation
+                            components of 3D Gaussians in quaternion form.
+            scales      :   If self.is_isotropic is True, scales is will be a torch.Tensor of shape (N, 1)
+                            If self.is_isotropic is False, scales is will be a torch.Tensor of shape (N, 3)
+            camera      :   A pytorch3d PerspectiveCameras object
+            img_size    :   A tuple representing the (width, height) of the image
+
+        Returns:
+            cov_3D  :   A torch.Tensor of shape (N, 3, 3)
+        """
+        N=quats.shape[0]
+
+        J = self._compute_jacobian(means_3D,camera,img_size)  # (N, 2, 3)
+
+        W = camera.R.repeat((N,1,1))  # (N, 3, 3)
+
+        cov_3D = self.compute_cov_3D(quats,scales)  # (N, 3, 3)
+
+        J=torch.bmm(J,W)
+        cov_2D = torch.bmm(J,torch.bmm(cov_3D,J.transpose(1,2)))  # (N, 2, 2)
+
+        # Post processing to make sure that each 2D Gaussian covers atleast approximately 1 pixel
+        cov_2D[:, 0, 0] += 0.3
+        cov_2D[:, 1, 1] += 0.3
+
+        return cov_2D
+
+    @staticmethod
+    def compute_means_2D(means_3D: torch.Tensor, camera: PerspectiveCameras):
+        """
+        Computes the means of the projected 2D Gaussians given the means of the 3D Gaussians.
+
+        Args:
+            means_3D    :   A torch.Tensor of shape (N, 3) representing the means of
+                            3D Gaussians.
+            camera      :   A pytorch3d PerspectiveCameras object.
+
+        Returns:
+            means_2D    :   A torch.Tensor of shape (N, 2) representing the means of
+                            2D Gaussians.
+        """
+
+        means_2D = camera.transform_points_screen(means_3D) # (N, 3)
+        return means_2D[:,:2] # (N, 2)
+
+    @staticmethod
+    def invert_cov_2D(cov_2D: torch.Tensor):
+        """
+        Using the formula for inverse of a 2D matrix to invert the cov_2D matrix
+
+        Args:
+            cov_2D          :   A torch.Tensor of shape (N, 2, 2)
+
+        Returns:
+            cov_2D_inverse  :   A torch.Tensor of shape (N, 2, 2)
+        """
+        determinants = cov_2D[:, 0, 0] * cov_2D[:, 1, 1] - cov_2D[:, 1, 0] * cov_2D[:, 0, 1]
+        determinants = determinants[:, None, None]  # (N, 1, 1)
+
+        cov_2D_inverse = torch.zeros_like(cov_2D)  # (N, 2, 2)
+        cov_2D_inverse[:, 0, 0] = cov_2D[:, 1, 1]
+        cov_2D_inverse[:, 1, 1] = cov_2D[:, 0, 0]
+        cov_2D_inverse[:, 0, 1] = -1.0 * cov_2D[:, 0, 1]
+        cov_2D_inverse[:, 1, 0] = -1.0 * cov_2D[:, 1, 0]
+
+        cov_2D_inverse = (1.0 / determinants) * cov_2D_inverse
+
+        return cov_2D_inverse
+
+    @staticmethod
+    def evaluate_gaussian_2D(points_2D: torch.Tensor, means_2D: torch.Tensor, cov_2D_inverse: torch.Tensor):
+        """
+        Computes the exponent (power) of 2D Gaussians.
+
+        Args:
+            points_2D       :   A torch.Tensor of shape (1, H*W, 2) containing the x, y points
+                                corresponding to every pixel in an image. See function
+                                compute_alphas in the class Scene to get more information
+                                about how points_2D is created.
+            means_2D        :   A torch.Tensor of shape (N, 1, 2) representing the means of
+                                N 2D Gaussians.
+            cov_2D_inverse  :   A torch.Tensor of shape (N, 2, 2) representing the
+                                inverse of the covariance matrices of N 2D Gaussians.
+
+        Returns:
+            power           :   A torch.Tensor of shape (N, H*W) representing the computed
+                                power of the N 2D Gaussians at every pixel location in an image.
+        """
+        vec=points_2D-means_2D # (N,H*W,2)
+        vec2=torch.bmm(cov_2D_inverse,vec.transpose(1,2)).transpose(1,2) # (N,H*W,2)
+        power =vec[:,:,0]*vec2[:,:,0]+vec[:,:,1]*vec2[:,:,1]  # (N, H*W)
+
+        return -0.5*power
 
     def compute_depth_values(self, camera: PerspectiveCameras):
         means_2D = camera.get_world_to_view_transform().transform_points(self.gaussians.means) # 世界坐标系转相机坐标系
@@ -39,9 +207,9 @@ class Scene:
         points_2D = points_2D.unsqueeze(0)  # (1, H*W, 2)
         means_2D = means_2D.unsqueeze(1)  # (N, 1, 2)
 
-        cov_2D_inverse = Gaussians.invert_cov_2D(cov_2D)  # (N, 2, 2) TODO: Verify shape
+        cov_2D_inverse = self.invert_cov_2D(cov_2D)  # (N, 2, 2) TODO: Verify shape
 
-        power = Gaussians.evaluate_gaussian_2D(points_2D,means_2D,cov_2D_inverse)  # (N, H*W)
+        power = self.evaluate_gaussian_2D(points_2D,means_2D,cov_2D_inverse)  # (N, H*W)
 
         # Computing exp(power) with some post processing for numerical stability
         exp_power = torch.where(power > 0.0, 0.0, torch.exp(power))
@@ -132,19 +300,11 @@ class Scene:
         if z_vals.shape[0]!=N:
             raise RuntimeError
         # Step 1: Compute 2D gaussian parameters
-        means_2D = Gaussians.compute_means_2D(means_3D,camera)  # (N, 2)
+        means_2D = self.compute_means_2D(means_3D,camera)  # (N, 2)
         if not no_grad:
             means_2D.retain_grad()
 
-        cov_2D = self.gaussians.compute_cov_2D(means_3D,quats,scales,camera,img_size)  # (N, 2, 2)
-
-        # 计算每个片元投影后在图片上的半径（2*2协方差矩阵的特征值）
-        mid = 0.5*(cov_2D[:,0,0] + cov_2D[:,1,1])
-        det = cov_2D[:,0,0] * cov_2D[:,1,1] - cov_2D[:,1,0]*cov_2D[:,0,1]
-        temp=torch.Tensor([0.1]).to(det.device)
-        lambda1 = mid + torch.sqrt(torch.max(temp, mid * mid - det))
-        lambda2 = mid - torch.sqrt(torch.max(temp, mid * mid - det))
-        radii = torch.ceil(3.0* torch.sqrt(torch.max(lambda1, lambda2))) # (N,1)
+        cov_2D = self.compute_cov_2D(means_3D,quats,scales,camera,img_size)  # (N, 2, 2)
 
         # Step 2: Compute alpha maps for each gaussian
 
@@ -171,7 +331,8 @@ class Scene:
         mask = torch.sum(alphas*transmittance,dim=0)  # (H, W, 1)
 
         final_transmittance = transmittance[-1, ..., 0].unsqueeze(0)  # (1, H, W)
-        return image, depth, mask, final_transmittance,means_2D,radii
+        
+        return image, depth, mask, final_transmittance
 
     def render(
         self, camera: PerspectiveCameras,
@@ -207,30 +368,13 @@ class Scene:
         # Globally sort gaussians according to their depth value
         z_vals = self.compute_depth_values(camera)
         idxs = self.get_idxs_to_filter_and_sort(z_vals)
-
-        pre_act_quats = self.gaussians.pre_act_quats[idxs]
-        pre_act_scales = self.gaussians.pre_act_scales[idxs]
-        pre_act_opacities = self.gaussians.pre_act_opacities[idxs]
+        colours = self.gaussians.get_colour[idxs]
+        quats = torch.zeros([colours.shape[0],4],dtype=colours.dtype,device=colours.device)
+        quats[:,3]=1.0
+        scales = self.gaussians.get_scaling[idxs]
+        opacities = self.gaussians.get_opacity[idxs]
         z_vals = z_vals[idxs]
         means_3D = self.gaussians.means[idxs]
-
-        # For questions 1.1, 1.2 and 1.3.2, use the below line of code for colours.
-        if not self.gaussians.sphere:
-            colours = self.gaussians.get_colour[idxs] # 不用球谐分量
-
-        # [Q 1.3.1] For question 1.3.1, uncomment the below three lines to calculate the
-        # colours instead of using self.gaussians.colours[idxs]. You may also comment
-        # out the above line of code since it will be overwritten anyway.
-        # 使用球谐分量
-        else:
-            spherical_harmonics = self.gaussians.spherical_harmonics[idxs]
-            gaussian_dirs = self.calculate_gaussian_directions(means_3D, camera)
-            colours = colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs)
-
-        # Apply activations
-        quats, scales, opacities = self.gaussians.apply_activations(
-            pre_act_quats, pre_act_scales, pre_act_opacities
-        )
 
         if per_splat == -1:
             num_mini_batches = 1
@@ -243,7 +387,7 @@ class Scene:
         if num_mini_batches == 1:
 
             # Get image, depth and mask via splatting
-            image, depth, mask, _,means_2D,radii = self.splat(
+            image, depth, mask,_ = self.splat(
                 camera, means_3D, z_vals, quats, scales,
                 colours, opacities, img_size,no_grad=no_grad
             )
@@ -258,8 +402,6 @@ class Scene:
             image = torch.zeros((H, W, 3), dtype=torch.float32).to(D)
             depth = torch.zeros((H, W, 1), dtype=torch.float32).to(D)
             mask = torch.zeros((H, W, 1), dtype=torch.float32).to(D)
-            radii=torch.zeros((len(means_3D), 1), dtype=torch.float32).to(D)
-            means_2D_list=[]
 
             # 每次计算一部分片元的颜色，最后叠加起来得到总的结果
             for b_idx in range(num_mini_batches):
@@ -272,7 +414,7 @@ class Scene:
                 opacities_ = opacities[b_idx * per_splat: (b_idx+1) * per_splat]
 
                 # Get image, depth and mask via splatting
-                image_, depth_, mask_, start_transmittance,means_2D_,radii_ = self.splat(
+                image_, depth_, mask_, start_transmittance = self.splat(
                     camera, means_3D_, z_vals_, quats_, scales_, colours_,
                     opacities_, img_size, start_transmittance,no_grad=no_grad
                 ) # 这里means_2D没有累加，此模式运行有问题，必须一次全导入
@@ -280,11 +422,7 @@ class Scene:
                 image = image + image_
                 depth = depth + depth_
                 mask = mask + mask_
-                radii[b_idx * per_splat: (b_idx+1) * per_splat]=radii_[:,None]
-                means_2D_list.append(means_2D_)
-
-            means_2D=torch.cat(means_2D_list,dim=0)
 
         image = mask * image + (1.0 - mask) * bg_colour_
 
-        return image, depth, mask,means_2D,radii
+        return image, depth, mask
