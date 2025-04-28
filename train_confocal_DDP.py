@@ -284,7 +284,7 @@ def train(rank, args):
     grid_size=0.0075
     decay=0.1
 
-    dataset= ConfDataset(args.data_path,filter=False)
+    dataset= NLOSDataset(args.data_path,filter=False)
     bin_resolution=dataset.bin_resolution
 
     num_bins=dataset.M

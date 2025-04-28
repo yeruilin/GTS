@@ -249,18 +249,18 @@ def train(rank, args):
     )
 
     confocal=True
-    decay=2
-    scale=0.005
+    decay=1
+    scale=0.002
 
     # 场景参数
-    min_pos=[-0.6,-0.6,0.95] ## random-nt数据参数
-    max_pos=[0.6,0.6,1.75]
-    grid_size=0.0075
-    # min_pos=[-0.7,-0.7,0.7] ## random-statue数据参数
-    # max_pos=[0.7,0.7,1.5]
+    # min_pos=[-0.6,-0.6,0.95] ## random-nt数据参数
+    # max_pos=[0.6,0.6,1.75]
     # grid_size=0.0075
+    min_pos=[-0.7,-0.7,0.7] ## random-statue数据参数
+    max_pos=[0.7,0.7,1.5]
+    grid_size=0.0075
 
-    dataset= RandomScanDataset2(args.data_path)
+    dataset= RandomScanDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
 
     num_bins=dataset.M
@@ -356,7 +356,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/random_statue.mat", type=str,
+        "--data_path", default="data/random_nt.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

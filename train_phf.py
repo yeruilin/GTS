@@ -14,7 +14,7 @@ import time
 import scipy
 import matplotlib.pyplot as plt
 
-from model2 import Scene, Gaussians
+from gaussian import Gaussians
 
 ### 随机初始化训练模型
 def run_training(args):
@@ -43,19 +43,25 @@ def run_training(args):
 
     save_ply("temp/init.ply",gaussians)
 
-    scene = Scene(gaussians)
     start=time.time()
     
-    dataset= PhfDataset(args.data_path,device=args.device)
+    dataset= PhfDataset(args.data_path)
+    device=args.device
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
+    cameraOrigin=dataset.cameraOrigin.to(device)
+    cameraPos=dataset.cameraPos.to(device)
+    if dataset.laserOrigin!=None:
+        laserOrigin=dataset.laserOrigin.to(device)
+    else:
+        laserOrigin=None
 
     print("radius:",radius)
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
-    print("laserOrigin:",dataset.laserOrigin)
-    print("cameraOrigin:",dataset.cameraOrigin)
-    print("cameraPos:",dataset.cameraPos)
+    print("laserOrigin:",laserOrigin)
+    print("cameraOrigin:",cameraOrigin)
+    print("cameraPos:",cameraPos)
     print("t0:",dataset.t0)
 
     train_loader = DataLoader(
@@ -80,12 +86,12 @@ def run_training(args):
             except StopIteration:
                 train_itr = iter(train_loader)
                 data = next(train_itr)
-            laserPos=data["point"]
-            gt_hist=data["hist"].reshape(-1)
+            laserPos=data["point"].to(device)
+            gt_hist=data["hist"].reshape(-1).to(device)
 
             # Rendering histogram using gaussian splatting
-            # hist= scene.render_nonconf_hist(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
-            hist= scene.render_nonconf_hist2(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
+            # hist= gaussians.render_nonconf_hist(laserPos,dataset.laserOrigin,dataset.cameraPos,dataset.cameraOrigin,bin_resolution,nums_bin,dataset.t0)
+            hist= gaussians.render_nonconf_hist2(laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,nums_bin,dataset.t0)
 
             loss+=torch.mean((hist-gt_hist).abs())
         

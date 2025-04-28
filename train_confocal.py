@@ -11,7 +11,7 @@ import time
 import scipy
 import matplotlib.pyplot as plt
 
-from model2 import Scene, Gaussians
+from gaussian import Gaussians
 
 ### 随机初始化训练模型
 def run_training(args):
@@ -77,8 +77,8 @@ def run_training(args):
     # scale=0.01
     # decay=0.1
 
-    dataset= NLOSDataset(args.data_path,device=args.device,filter=use_filter)
-    
+    dataset= NLOSDataset(args.data_path,filter=use_filter)
+    device=args.device
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
     
@@ -90,7 +90,6 @@ def run_training(args):
 
     save_ply("temp/init.ply",gaussians)
 
-    scene = Scene(gaussians)
     start=time.time()
 
     print("radius:",gaussians.radius)
@@ -121,13 +120,13 @@ def run_training(args):
                 train_itr = iter(train_loader)
                 data = next(train_itr)
 
-            scan_point=data["point"]
-            gt_hist=data["hist"].reshape(-1)
+            scan_point=data["point"].to(device)
+            gt_hist=data["hist"].reshape(-1).to(device)
 
             # Rendering histogram using gaussian splatting
-            # hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
+            # hist= gaussians.render_conf_hist(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
             # 在实测数据上，纯用高斯拟合效果更差
-            hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
+            hist= gaussians.render_conf_hist2(scan_point,bin_resolution,nums_bin,dataset.t0,decay)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -190,7 +189,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/teapot.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(

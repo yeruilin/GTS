@@ -14,7 +14,7 @@ import time
 import scipy
 import matplotlib.pyplot as plt
 
-from model2 import Scene, Gaussians
+from gaussian import Gaussians
 
 ### 随机初始化训练模型
 def run_training(args):
@@ -43,11 +43,10 @@ def run_training(args):
 
     save_ply("temp/init.ply",gaussians)
 
-    scene = Scene(gaussians)
     start=time.time()
-    
-    # dataset= NLOSDataset(args.data_path,device=args.device)
-    dataset= RandomScanDataset(args.data_path,device=args.device)
+
+    dataset= RandomScanDataset(args.data_path)
+    device=args.device
     bin_resolution=dataset.bin_resolution
     nums_bin=dataset.M
 
@@ -79,12 +78,12 @@ def run_training(args):
                 train_itr = iter(train_loader)
                 data = next(train_itr)
 
-            scan_point=data["point"]
-            gt_hist=data["hist"].reshape(-1)
+            scan_point=data["point"].to(device)
+            gt_hist=data["hist"].reshape(-1).to(device)
 
             # Rendering histogram using gaussian splatting
-            # hist= scene.render_conf_hist(scan_point,bin_resolution,nums_bin)
-            hist= scene.render_conf_hist2(scan_point,bin_resolution,nums_bin)
+            # hist= gaussians.render_conf_hist(scan_point,bin_resolution,nums_bin)
+            hist= gaussians.render_conf_hist2(scan_point,bin_resolution,nums_bin)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -174,7 +173,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="data/lct_mannequin.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/random_statue.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(
