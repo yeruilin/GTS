@@ -195,8 +195,16 @@ class PhfDataset(Dataset):
 
             self.z=z
 
+            data_path=data_dir+"indices2000.mat"
+            if os.path.exists(data_path):
+                indices=loadmat(data_path)["indices"]
+                self.indices=[item[0] for item in indices]
+            else:
+                self.indices=[item for item in range(self.N)]
+
             # 激光打在墙上的点
             self.laserPos=torch.from_numpy(data_dict["laserPos"]).float() # [N,3]
+            self.laserPos=self.laserPos[self.indices]
 
             # 激光出射位置
             if "laserOrigin" in data_dict:
@@ -225,10 +233,10 @@ class PhfDataset(Dataset):
             exit()
 
     def  __len__(self):
-        return self.N
+        return len(self.indices)
         
     def __getitem__(self, i):
-        file=self.data_dir+f"{1+i}.mat"
+        file=self.data_dir+f"{1+self.indices[i]}.mat"
         hist=loadmat(file)["img"]
         hist=torch.from_numpy(hist)
         if self.filter:

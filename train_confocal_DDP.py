@@ -30,11 +30,12 @@ def train(rank, args):
     confocal=True
     decay=2
     scale=0.005
+    filter=False
 
     # 场景参数
-    min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
-    max_pos=[0.4,0.6,1.5]
-    grid_size=[0.005,0.005,0.005]
+    # min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
+    # max_pos=[0.4,0.6,1.5]
+    # grid_size=[0.005,0.005,0.005]
     
     # radius=[0.5,0.5,0.4] ## bunny的参数
     # object_center=(0.0037,0.1018,0.8335)
@@ -49,9 +50,14 @@ def train(rank, args):
     # max_pos=[1.0,1.0,1.9]
     # grid_size=0.0075
 
-    # min_pos=[-1.0,-1.0,1.05] ## fk-dragon数据参数
-    # max_pos=[1.0,1.0,1.65]
-    # grid_size=0.0075
+    # min_pos=[-1.0,-1.0,1.25] ## fk-dragon数据参数
+    # max_pos=[1.0,1.0,1.45]
+    # grid_size=[0.01,0.01,0.01]
+    # filter=True
+
+    # min_pos=[-0.7,-0.7,0.9] ## fk-statue数据参数
+    # max_pos=[0.7,0.7,1.3]
+    # grid_size=[0.01,0.01,0.01]
 
     # min_pos=[-0.8,-0.8,4.8] ## daichen-L数据参数
     # max_pos=[0.2,0.8,5.2]
@@ -67,7 +73,12 @@ def train(rank, args):
     # max_pos=[0.3,0.3,0.65] ## mannequin数据的参数
     # grid_size=0.002
 
-    dataset= NLOSDataset(args.data_path,filter=False)
+    min_pos=[-0.4,-0.4,0.7] ## lct_id6_data_exit_sign标志牌的参数
+    max_pos=[0.4,0.4,0.9]
+    grid_size=[0.0063,0.0063,0.0025]
+    scale=0.002
+
+    dataset= NLOSDataset(args.data_path,filter=filter)
     bin_resolution=dataset.bin_resolution
 
     num_bins=dataset.M
@@ -163,7 +174,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/teapot.mat", type=str,
+        "--data_path", default="data/lct_id6_data_exit_sign.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

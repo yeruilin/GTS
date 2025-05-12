@@ -66,6 +66,7 @@ def train(rank, args):
         print("cameraOrigin:",cameraOrigin)
         print("cameraPos:",cameraPos)
         print("t0:",dataset.t0)
+        print("length:",len(dataset))
     
     sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=args.world_size, rank=rank, shuffle=True)
     train_loader = torch.utils.data.DataLoader(dataset, batch_size=1, sampler=sampler)
