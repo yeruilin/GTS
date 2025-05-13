@@ -28,7 +28,7 @@ def train(rank, args):
     )
 
     confocal=True
-    decay=2
+    decay=4
     scale=0.002
 
     # 场景参数

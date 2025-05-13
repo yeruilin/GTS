@@ -28,7 +28,7 @@ def train(rank, args):
     )
 
     confocal=True
-    decay=2
+    decay=4
     scale=0.002
     filter=False
 
@@ -41,18 +41,19 @@ def train(rank, args):
     # object_center=(0.0037,0.1018,0.8335)
     # scale=0.015
 
-    # min_pos=[-1.0,-0.6,1.25] ## fk-bike数据参数
-    # max_pos=[1.0,0.9,1.5]
-    # grid_size=0.005
+    min_pos=[-1.1,-0.55,1.35] ## fk-bike数据参数
+    max_pos=[1.1,0.85,1.5]
+    grid_size=[0.0075,0.0075,0.005]
+    filter=True
     #### ratio=[0.8,0.5,0.2]
 
     # min_pos=[-1.0,-1.0,1.05] ## fk-teaser数据参数
     # max_pos=[1.0,1.0,1.9]
-    # grid_size=0.0075
+    # grid_size=[0.0075,0.0075,0.005]
 
-    # min_pos=[-1.0,-1.0,1.25] ## fk-dragon数据参数
-    # max_pos=[1.0,1.0,1.45]
-    # grid_size=[0.01,0.01,0.01]
+    # min_pos=[-1.0,-1.0,1.2] ## fk-dragon数据参数
+    # max_pos=[1.0,1.0,1.5]
+    # grid_size=[0.01,0.01,0.005]
     # filter=True
 
     # min_pos=[-0.7,-0.7,0.9] ## fk-statue数据参数
@@ -73,20 +74,20 @@ def train(rank, args):
     # max_pos=[0.3,0.3,0.65] ## mannequin数据的参数
     # grid_size=0.002
 
-    # min_pos=[-0.4,-0.4,0.7] ## lct_id6_data_exit_sign标志牌的参数
-    # max_pos=[0.4,0.4,0.9]
-    # grid_size=[0.0063,0.0063,0.0025]
-    # scale=0.002
+    # min_pos=[-0.5,-0.5,0.75] ## lct_id6_data_exit_sign标志牌的参数
+    # max_pos=[0.5,0.5,0.9]
+    # grid_size=[0.0063,0.0063,0.0059]
+    # scale=0.005
 
     # min_pos=[-0.075,-0.075,0.09] ## fmcw_four_types数据的参数
-    # max_pos=[0.075,0.075,0.14]
+    # max_pos=[0.075,0.075,0.12]
     # grid_size=[0.00059,0.00059,0.00059]
     # scale=0.0002
 
-    min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数
-    max_pos=[0.075,0.075,0.11]
-    grid_size=[0.00059,0.00059,0.0002]
-    scale=0.0002
+    # min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数
+    # max_pos=[0.075,0.075,0.11]
+    # grid_size=[0.00059,0.00059,0.00059]
+    # scale=0.0002
 
     dataset= NLOSDataset(args.data_path,filter=filter)
     bin_resolution=dataset.bin_resolution
@@ -184,11 +185,11 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/fmcw_sports64.mat", type=str,
+        "--data_path", default="data/fk_bike30.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
-        "--num_itrs", default=1001, type=int,
+        "--num_itrs", default=5001, type=int,
         help="Number of iterations to train the model."
     )
     parser.add_argument(
