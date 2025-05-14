@@ -47,15 +47,16 @@ def train(rank, args):
     # grid_size=[0.0075,0.0075,0.005]
     # filter=True
 
-    # min_pos=[-1.0,-1.0,1.05] ## fk-teaser数据参数
+    # min_pos=[-1.0,-1.0,1.0] ## fk-teaser数据参数
     # max_pos=[1.0,1.0,1.9]
-    # grid_size=[0.0075,0.0075,0.005]
+    # grid_size=[0.0075,0.0075,0.006]
+    # decay=0.1
 
-    min_pos=[-1.0,-1.0,1.2] ## fk-dragon数据参数
-    max_pos=[1.0,1.0,1.5]
-    grid_size=[0.01,0.01,0.005]
-    filter=True
-    num_itrs=3001 # 信噪比越低，所需轮次越大
+    # min_pos=[-1.0,-1.0,1.2] ## fk-dragon数据参数
+    # max_pos=[1.0,1.0,1.5]
+    # grid_size=[0.01,0.01,0.005]
+    # filter=True
+    # num_itrs=3001 # 信噪比越低，所需轮次越大
 
     # min_pos=[-0.7,-0.7,0.9] ## fk-statue数据参数
     # max_pos=[0.7,0.7,1.3]
@@ -84,7 +85,13 @@ def train(rank, args):
     # min_pos=[-0.075,-0.075,0.09] ## fmcw_four_types数据的参数
     # max_pos=[0.075,0.075,0.12]
     # grid_size=[0.00059,0.00059,0.00059]
-    # scale=0.0002
+    # scale=0.0005
+    # itr=601
+
+    min_pos=[-0.09,-0.08,0.21] ## fmcw_four_types2_low_snr数据的参数
+    max_pos=[0.08,0.09,0.235]
+    grid_size=[0.00059,0.00059,0.00015]
+    scale=0.00015
 
     # min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数(这个位置可能不对)
     # max_pos=[0.075,0.075,0.11]
@@ -187,7 +194,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/fk_dragon10.mat", type=str,
+        "--data_path", default="data/fmcw_four_types_low_snr.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
