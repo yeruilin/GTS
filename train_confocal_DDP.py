@@ -31,48 +31,50 @@ def train(rank, args):
     decay=4
     scale=0.002
     filter=False
+    num_itrs=1001
 
     # 场景参数
     # min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
     # max_pos=[0.4,0.6,1.5]
     # grid_size=[0.005,0.005,0.005]
-    
-    # radius=[0.5,0.5,0.4] ## bunny的参数
-    # object_center=(0.0037,0.1018,0.8335)
-    # scale=0.015
 
-    min_pos=[-1.1,-0.55,1.35] ## fk-bike数据参数
-    max_pos=[1.1,0.85,1.5]
-    grid_size=[0.0075,0.0075,0.005]
-    filter=True
-    #### ratio=[0.8,0.5,0.2]
+    # min_pos=[-0.5,-0.5,0.45] ## bunny的参数
+    # max_pos=[0.5,0.5,1.25]
+    # grid_size=0.015
+
+    # min_pos=[-1.1,-0.55,1.35] ## fk-bike数据参数
+    # max_pos=[1.1,0.85,1.5]
+    # grid_size=[0.0075,0.0075,0.005]
+    # filter=True
 
     # min_pos=[-1.0,-1.0,1.05] ## fk-teaser数据参数
     # max_pos=[1.0,1.0,1.9]
     # grid_size=[0.0075,0.0075,0.005]
 
-    # min_pos=[-1.0,-1.0,1.2] ## fk-dragon数据参数
-    # max_pos=[1.0,1.0,1.5]
-    # grid_size=[0.01,0.01,0.005]
-    # filter=True
+    min_pos=[-1.0,-1.0,1.2] ## fk-dragon数据参数
+    max_pos=[1.0,1.0,1.5]
+    grid_size=[0.01,0.01,0.005]
+    filter=True
+    num_itrs=3001 # 信噪比越低，所需轮次越大
 
     # min_pos=[-0.7,-0.7,0.9] ## fk-statue数据参数
     # max_pos=[0.7,0.7,1.3]
     # grid_size=[0.01,0.01,0.01]
 
-    # min_pos=[-0.8,-0.8,4.8] ## daichen-L数据参数
-    # max_pos=[0.2,0.8,5.2]
-    # grid_size=0.005
-    # decay=2
+    # min_pos=[-0.75,-0.75,4.8] ## daichen-L数据参数
+    # max_pos=[0.75,0.75,5.2]
+    # grid_size=[0.0075,0.0075,0.005]
+    # decay=0.1
 
-    # min_pos=[-1.0,-0.75,4.8] ## daichen-7数据参数
-    # max_pos=[0.5,0.75,5.2]
-    # grid_size=0.0075
+    # min_pos=[-0.75,-0.75,4.8] ## daichen-7数据参数
+    # max_pos=[0.75,0.75,5.2]
+    # grid_size=[0.0075,0.0075,0.005]
     # decay=0.1
 
     # min_pos=[-0.3,-0.3,0.45]
     # max_pos=[0.3,0.3,0.65] ## mannequin数据的参数
-    # grid_size=0.002
+    # grid_size=[0.005,0.005,0.0025]
+    # decay=2
 
     # min_pos=[-0.5,-0.5,0.75] ## lct_id6_data_exit_sign标志牌的参数
     # max_pos=[0.5,0.5,0.9]
@@ -84,7 +86,7 @@ def train(rank, args):
     # grid_size=[0.00059,0.00059,0.00059]
     # scale=0.0002
 
-    # min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数
+    # min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数(这个位置可能不对)
     # max_pos=[0.075,0.075,0.11]
     # grid_size=[0.00059,0.00059,0.00059]
     # scale=0.0002
@@ -124,7 +126,7 @@ def train(rank, args):
         ]
     optimizer = torch.optim.Adam(l)
     
-    for itr in range(1,args.num_itrs):
+    for itr in range(1,num_itrs):
         loss=0
         sample_num=1 # sample_num和内存占用成正比，因此可以调小一些
 
@@ -185,12 +187,8 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/fk_bike30.mat", type=str,
+        "--data_path", default="data/fk_dragon10.mat", type=str,
         help="Path to the dataset."
-    )
-    parser.add_argument(
-        "--num_itrs", default=5001, type=int,
-        help="Number of iterations to train the model."
     )
     parser.add_argument(
         "--world_size", default=4, type=int,

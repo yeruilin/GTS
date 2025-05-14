@@ -152,7 +152,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_1000ms_lightoff_data/", type=str,
+        "--data_path", default="shelves_50ms_lighton_data/", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

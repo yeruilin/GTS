@@ -32,9 +32,9 @@ def train(rank, args):
     scale=0.002
 
     # 场景参数
-    min_pos=[-0.6,-0.6,0.95] ## random-nt数据参数
-    max_pos=[0.6,0.6,1.75]
-    grid_size=0.0075
+    min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
+    max_pos=[0.5,0.5,1.75]
+    grid_size=[0.015,0.015,0.005]
     # min_pos=[-0.7,-0.7,0.7] ## random-statue数据参数
     # max_pos=[0.7,0.7,1.5]
     # grid_size=0.0075

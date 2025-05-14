@@ -254,9 +254,6 @@ class RandomScanDataset(Dataset):
                 self.bin_resolution=self.bin_resolution[0][0]
             if self.bin_resolution<1e-9:
                 self.bin_resolution=self.bin_resolution*3e8
-            self.width=data_dict["width"]
-            if type(self.width)!=float:
-                self.width=self.width[0][0]+0.0
             
             self.data=data_dict["data"] # [sample_num,M]
             self.N=64
