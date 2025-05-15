@@ -38,7 +38,8 @@ def train(rank, args):
     confocal=False
     decay=2
     scale=0.005
-    
+    num_itrs=2001
+
     # 场景参数
     # min_pos=[-1.3,0.5,0.65] ## phasor_id5的参数(shelf_targets_lighton_data)
     # max_pos=[0.0,1.8,0.95]
@@ -48,7 +49,7 @@ def train(rank, args):
     max_pos=[0.8,0.8,1.1]
     grid_size=[0.0075,0.0075,0.0075]
     scale=0.002
-    decay=2
+    # decay=2
     # min_pos=[-1.8,0.5,0.4] ## office phasor id4的参数(office_data)
     # max_pos=[0.0,1.8,1.3]
     # grid_size=[0.0075,0.0075,0.012]
@@ -90,8 +91,9 @@ def train(rank, args):
             {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
     
-    for itr in range(1,args.num_itrs):
+    for itr in range(1,num_itrs):
         loss=0
         sample_num=1 # sample_num和内存占用成正比，因此可以调小一些
 
@@ -115,6 +117,7 @@ def train(rank, args):
         loss=loss/sample_num
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if rank == 0:
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
@@ -152,12 +155,8 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="shelves_50ms_lighton_data/", type=str,
+        "--data_path", default="shelves_1000ms_lightoff_data/", type=str,
         help="Path to the dataset."
-    )
-    parser.add_argument(
-        "--num_itrs", default=1001, type=int,
-        help="Number of iterations to train the model."
     )
     parser.add_argument(
         "--world_size", default=4, type=int,

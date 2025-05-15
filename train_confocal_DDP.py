@@ -31,7 +31,7 @@ def train(rank, args):
     decay=4
     scale=0.002
     filter=False
-    num_itrs=1001
+    num_itrs=3001
 
     # 场景参数
     # min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
@@ -42,15 +42,15 @@ def train(rank, args):
     # max_pos=[0.5,0.5,1.25]
     # grid_size=0.015
 
-    # min_pos=[-1.1,-0.55,1.35] ## fk-bike数据参数
-    # max_pos=[1.1,0.85,1.5]
+    # min_pos=[-1.1,-0.55,1.25] ## fk-bike数据参数
+    # max_pos=[1.1,0.85,1.55]
     # grid_size=[0.0075,0.0075,0.005]
-    # filter=True
+    # # filter=True
+    # num_itrs=5001
 
     # min_pos=[-1.0,-1.0,1.0] ## fk-teaser数据参数
     # max_pos=[1.0,1.0,1.9]
     # grid_size=[0.0075,0.0075,0.006]
-    # decay=0.1
 
     # min_pos=[-1.0,-1.0,1.2] ## fk-dragon数据参数
     # max_pos=[1.0,1.0,1.5]
@@ -84,14 +84,15 @@ def train(rank, args):
 
     # min_pos=[-0.075,-0.075,0.09] ## fmcw_four_types数据的参数
     # max_pos=[0.075,0.075,0.12]
-    # grid_size=[0.00059,0.00059,0.00059]
-    # scale=0.0005
-    # itr=601
+    # grid_size=[0.00059,0.00059,0.0002]
+    # scale=0.0002
+    # num_itrs=601
 
-    min_pos=[-0.09,-0.08,0.21] ## fmcw_four_types2_low_snr数据的参数
-    max_pos=[0.08,0.09,0.235]
-    grid_size=[0.00059,0.00059,0.00015]
-    scale=0.00015
+    # min_pos=[-0.08,-0.07,0.21] ## fmcw_four_types_low_snr数据的参数
+    # max_pos=[0.07,0.08,0.235]
+    # grid_size=[0.00059,0.00059,0.00015]
+    # scale=0.00015
+    # num_itrs=6001
 
     # min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数(这个位置可能不对)
     # max_pos=[0.075,0.075,0.11]
@@ -127,11 +128,12 @@ def train(rank, args):
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
     l = [
-            {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
-            {'params': [model.pre_act_opacities], 'lr': 0.025, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
+            {'params': [model.pre_act_opacities], 'lr': 0.02, "name": "opacity"},
+            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
     
     for itr in range(1,num_itrs):
         loss=0
@@ -157,6 +159,7 @@ def train(rank, args):
         loss=loss/sample_num
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if rank == 0:
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
@@ -194,7 +197,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/fmcw_four_types_low_snr.mat", type=str,
+        "--data_path", default="data/fk_bike30.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

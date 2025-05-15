@@ -30,6 +30,7 @@ def train(rank, args):
     confocal=True
     decay=4
     scale=0.002
+    num_itrs=1001
 
     # 场景参数
     min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
@@ -73,8 +74,9 @@ def train(rank, args):
             {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
     
-    for itr in range(1,args.num_itrs):
+    for itr in range(1,num_itrs):
         loss=0
         sample_num=1 # sample_num和内存占用成正比，因此可以调小一些
 
@@ -98,6 +100,7 @@ def train(rank, args):
         loss=loss/sample_num
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if rank == 0:
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
@@ -137,10 +140,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_path", default="data/random_nt.mat", type=str,
         help="Path to the dataset."
-    )
-    parser.add_argument(
-        "--num_itrs", default=1001, type=int,
-        help="Number of iterations to train the model."
     )
     parser.add_argument(
         "--world_size", default=4, type=int,
