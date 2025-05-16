@@ -82,22 +82,29 @@ def train(rank, args):
     # grid_size=[0.0063,0.0063,0.0059]
     # scale=0.005
 
-    # min_pos=[-0.075,-0.075,0.09] ## fmcw_four_types数据的参数
+    # min_pos=[-0.075,-0.075,0.09] ## fmcw_four_types_10cm数据的参数
     # max_pos=[0.075,0.075,0.12]
     # grid_size=[0.00059,0.00059,0.0002]
     # scale=0.0002
     # num_itrs=601
 
-    # min_pos=[-0.08,-0.07,0.21] ## fmcw_four_types_low_snr数据的参数
+    # min_pos=[-0.08,-0.07,0.21] ## fmcw_four_types_20cm数据的参数
     # max_pos=[0.07,0.08,0.235]
     # grid_size=[0.00059,0.00059,0.00015]
     # scale=0.00015
     # num_itrs=6001
 
-    # min_pos=[-0.075,-0.075,0.09] ## fmcw_sports数据的参数(这个位置可能不对)
-    # max_pos=[0.075,0.075,0.11]
-    # grid_size=[0.00059,0.00059,0.00059]
+    # min_pos=[-0.075,-0.075,0.10] ## fmcw_sports数据的参数(这个位置可能不对)
+    # max_pos=[0.075,0.075,0.12]
+    # grid_size=[0.00059,0.00059,0.0002]
     # scale=0.0002
+    # num_itrs=1001
+
+    min_pos=[-0.95,-0.95,0.75] ## yejuntian_TCYV数据
+    max_pos=[0.95,0.95,2.0]
+    grid_size=[0.0075,0.0075,0.0075]
+    scale=0.005
+    decay=6
 
     dataset= NLOSDataset(args.data_path,filter=filter)
     bin_resolution=dataset.bin_resolution
@@ -128,9 +135,9 @@ def train(rank, args):
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
     l = [
-            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
+            {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
             {'params': [model.pre_act_opacities], 'lr': 0.02, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
+            {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
@@ -197,7 +204,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/fk_bike30.mat", type=str,
+        "--data_path", default="data/yejuntian_TCYV_clip.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
