@@ -33,20 +33,21 @@ def train(rank, args):
     num_itrs=1001
 
     # 场景参数
-    min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
-    max_pos=[0.5,0.5,1.75]
-    grid_size=[0.015,0.015,0.005]
+    # min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
+    # max_pos=[0.5,0.5,1.75]
+    # grid_size=[0.015,0.015,0.005]
     # min_pos=[-0.7,-0.7,0.7] ## random-statue数据参数
     # max_pos=[0.7,0.7,1.5]
     # grid_size=0.0075
 
-    # min_pos=[-0.9,-0.9,1.2] ## random_seahorse数据参数
-    # max_pos=[0.9,0.9,2.0]
+    # min_pos=[-0.9,-0.9,0.8] ## random_seahorse数据参数
+    # max_pos=[0.9,0.9,1.6]
     # grid_size=[0.015,0.015,0.005]
 
-    # min_pos=[-0.9,-0.9,0.8] ## random_turntable数据参数
-    # max_pos=[0.9,0.9,1.8]
-    # grid_size=[0.015,0.015,0.005]
+    min_pos=[-0.9,-0.9,0.7] ## random_turntable数据参数
+    max_pos=[0.9,0.9,1.4]
+    grid_size=[0.007,0.007,0.005]
+    num_itrs=1001
 
     # min_pos=[-0.9,-0.9,1.2] ## random_turtle数据参数
     # max_pos=[0.9,0.9,2.0]
@@ -81,9 +82,9 @@ def train(rank, args):
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
     l = [
-            {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
-            {'params': [model.pre_act_opacities], 'lr': 0.025, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
+            {'params': [model.pre_act_opacities], 'lr': 0.02, "name": "opacity"},
+            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
@@ -150,7 +151,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/random_nt.mat", type=str,
+        "--data_path", default="data/random_turntable.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
