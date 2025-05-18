@@ -102,6 +102,7 @@ def train(rank, args):
     max_pos=[0.075,0.075,0.22]
     grid_size=[0.00059,0.00059,0.00059]
     scale=0.0005
+    num_itrs=10001
 
     # min_pos=[-0.95,-0.95,0.75] ## yejuntian_TCYV数据
     # max_pos=[0.95,0.95,2.0]

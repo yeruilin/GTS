@@ -44,14 +44,14 @@ def train(rank, args):
     # max_pos=[0.9,0.9,1.6]
     # grid_size=[0.015,0.015,0.005]
 
-    min_pos=[-0.9,-0.9,0.7] ## random_turntable数据参数
+    # min_pos=[-0.9,-0.9,0.7] ## random_turntable数据参数
+    # max_pos=[0.9,0.9,1.4]
+    # grid_size=[0.007,0.007,0.005]
+    # num_itrs=1001
+
+    min_pos=[-0.9,-0.9,0.7] ## random_turtle数据参数
     max_pos=[0.9,0.9,1.4]
     grid_size=[0.007,0.007,0.005]
-    num_itrs=1001
-
-    # min_pos=[-0.9,-0.9,1.2] ## random_turtle数据参数
-    # max_pos=[0.9,0.9,2.0]
-    # grid_size=[0.015,0.015,0.005]
 
     dataset= RandomScanDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -151,7 +151,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/random_turntable.mat", type=str,
+        "--data_path", default="data/random_turtle.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
