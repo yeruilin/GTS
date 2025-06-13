@@ -29,8 +29,9 @@ def train(rank, args):
 
     confocal=True
     decay=4
-    scale=0.002
-    filter=False
+    scale=0.002 # set `scale` smaller than the grid size
+    train_fast=True # for more complex scene, set `train_fast`=False
+    filter=False # for uncontinous histogram, set `filter`=True
     num_itrs=3001
 
     # 场景参数
@@ -98,17 +99,17 @@ def train(rank, args):
     # grid_size=[0.00059,0.00059,0.00059]
     # scale=0.0005
 
-    min_pos=[-0.075,-0.075,0.19] ## fmcw_sports_20cm数据的参数
-    max_pos=[0.075,0.075,0.22]
-    grid_size=[0.00059,0.00059,0.00059]
-    scale=0.0005
-    num_itrs=10001
+    # min_pos=[-0.075,-0.075,0.19] ## fmcw_sports_20cm数据的参数
+    # max_pos=[0.075,0.075,0.22]
+    # grid_size=[0.00059,0.00059,0.00059]
+    # scale=0.0005
+    # num_itrs=10001
 
-    # min_pos=[-0.95,-0.95,0.75] ## yejuntian_TCYV数据
-    # max_pos=[0.95,0.95,2.0]
-    # grid_size=[0.0075,0.0075,0.0075]
-    # scale=0.005
-    # decay=6
+    min_pos=[-0.95,-0.95,0.75] ## yejuntian_TCYV数据
+    max_pos=[0.95,0.95,1.95]
+    grid_size=[0.0075,0.0075,0.0075] # [0.0075,0.0075,0.005]
+    scale=0.002
+    train_fast=False
 
     dataset= NLOSDataset(args.data_path,filter=filter)
     bin_resolution=dataset.bin_resolution
@@ -138,13 +139,20 @@ def train(rank, args):
     
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
-    l = [
-            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
-            {'params': [model.pre_act_opacities], 'lr': 0.02, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
-        ]
+    if train_fast:
+        l = [
+                {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
+                {'params': [model.pre_act_opacities], 'lr': 0.02, "name": "opacity"},
+                {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            ]
+    else:
+        l = [
+                {'params': [model.colours], 'lr': 0.001, "name": "colours"},
+                {'params': [model.pre_act_opacities], 'lr': 0.01, "name": "opacity"},
+                {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            ]
     optimizer = torch.optim.Adam(l)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.8)
     
     for itr in range(1,num_itrs):
         loss=0
@@ -208,7 +216,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/fmcw_sports_20cm_clip.mat", type=str,
+        "--data_path", default="data/yejuntian_TCYV_clip.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

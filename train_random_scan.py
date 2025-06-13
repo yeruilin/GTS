@@ -29,11 +29,15 @@ def run_training(args):
     # radius=[0.6,0.6,0.4] ## random-nt数据参数
     # object_center=(0.05,0,1.35)
     # scale=0.01
-    radius=[0.7,0.9,0.4] ## random-statue数据参数
-    object_center=(0,0,1.1)
-    scale=0.015
+    # radius=[0.7,0.9,0.4] ## random-statue数据参数
+    # object_center=(0,0,1.1)
+    # scale=0.015
     # radius=[0.6,0.6,0.6] ## random-bunny数据参数
     # object_center=(0,0,1.3)
+
+    radius=[0.3,0.3,0.3] ## frontback_bunny数据参数
+    object_center=(0,0,0)
+    scale=0.03
     
     gaussians = Gaussians(
         num_points=15000, init_type="random",
@@ -53,7 +57,6 @@ def run_training(args):
     print("radius:",gaussians.radius)
     print("center:",object_center)
     print("bin resolution:",bin_resolution)
-    print("width:",dataset.width)
 
     train_loader = DataLoader(
         dataset, batch_size=1,shuffle=True
@@ -63,6 +66,7 @@ def run_training(args):
     ### 开始训练
     # 阶段一：清掉无用位置的点
     opt_param=OptimizationParams()
+    opt_param.scaling_lr=0.005
     gaussians.training_setup(opt_param)
 
     loss_list=[]
@@ -99,12 +103,12 @@ def run_training(args):
             if itr%50==0:
                 # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
                 # 防止出现太大的片元
-                select_mask=torch.where(gaussians.get_scaling[:,0]>0.02, True, False).flatten()
+                select_mask=torch.where(gaussians.get_scaling[:,0]>scale, True, False).flatten()
                 gaussians.density_and_split1(select_mask,copy_num=1)
                 print(f"split number: {torch.sum(select_mask).item()}")
 
                 # 直接删除太大的片元
-                prune_mask=torch.where(gaussians.get_scaling[:,0]>0.03, True, False).flatten()
+                prune_mask=torch.where(gaussians.get_scaling[:,0]>scale*2, True, False).flatten()
                 gaussians.prune_points(prune_mask)
                 print(f"prune number: {torch.sum(prune_mask).item()}")
 
@@ -173,7 +177,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="data/random_statue.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/frontback_bunny2.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(

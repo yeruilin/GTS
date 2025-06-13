@@ -268,6 +268,9 @@ class RandomScanDataset(Dataset):
             # 扫描网格
             self.grid=torch.from_numpy(data_dict["grid"]) # [N,3]
 
+            # self.data=self.data[128*128*2+12415:128*128*2+12415*2,:] # 逐个面计算
+            # self.grid=self.grid[128*128*2+12415:128*128*2+12415*2,:]
+
             # 索引0对应的时间
             if "t0" in data_dict.keys():
                 self.t0=torch.from_numpy(data_dict["t0"]).item() # 浮点数
