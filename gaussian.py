@@ -219,7 +219,7 @@ class Gaussians:
         # Initializing scales randomly
         # data["pre_act_scales"] = torch.log((torch.rand((num_points, 1), dtype=torch.float32) + 1e-6) * 0.01)
         # Initializing scales using the mean distance of each point to its 50 nearest points
-        dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
+        # dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
         # data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
         data["pre_act_scales"] = torch.log(torch.ones((num_points,1),dtype=torch.float32)*scale)  # (N, 1)
 
