@@ -31,24 +31,28 @@ def create_renders(args):
         os.makedirs(debug_root, exist_ok=True)
 
     # load voxel
-    mat_path="bunny_result.mat"
+    mat_path="temp/result500.mat" # bunny_result
     mat_data = scipy.io.loadmat(mat_path)
     rho = mat_data['rho']
     rho=rho/np.max(rho)
 
-    lower_corner = np.array([-1,-1,-1], dtype=float)
-    upper_corner = np.array([1,1,1], dtype=float)
+    min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    max_pos=[0.15,0.3,0.3]
+
+    lower_corner = np.array(min_pos, dtype=float)
+    upper_corner = np.array(max_pos, dtype=float)
     
     grid_size = np.array(rho.shape, dtype=float)
     steps = (upper_corner - lower_corner) / (grid_size - 1) # 计算每个维度的步长
     
     # 获取大于阈值的坐标和值
-    thresh=0.01
+    thresh=0.05
     x_idx, y_idx, z_idx = np.where(rho > thresh)
     values = rho[x_idx, y_idx, z_idx]
     
     # 构建4维向量 [x,y,z,value]
-    result = np.column_stack((x_idx, y_idx, z_idx, values))
+    result = np.column_stack((x_idx, y_idx, z_idx,values)) # lion
+    # result = np.column_stack((x_idx, z_idx, y_idx, values)) # bunny
     
     # 转换为4维数组 (N,4)
     result = result.reshape(-1, 4)
@@ -67,9 +71,9 @@ def create_renders(args):
     filename=args.data_path.split("/")[-1][:-4]
 
     gaussians.means = torch.from_numpy(xyz).to(args.device).float()
-    gaussians.colours=torch.from_numpy(rho).to(args.device).float()
+    gaussians.colours=torch.from_numpy(rho/1000).to(args.device).float()
     gaussians.pre_act_scales = torch.log(torch.ones((xyz.shape[0],1),dtype=torch.float32,device=args.device)*steps[0])
-    gaussians.pre_act_opacities = 8.0 * torch.ones((xyz.shape[0],), dtype=torch.float32,device=args.device)
+    gaussians.pre_act_opacities = 0.0 * torch.ones((xyz.shape[0],), dtype=torch.float32,device=args.device)
     _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
     gaussians.radius=torch.max(_range/2.0).to(args.device)
 

@@ -29,16 +29,17 @@ def train(rank, args):
     confocal=True
     decay=4
     scale=0.002
-    num_itrs=1001
+    num_itrs=501
 
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    max_pos=[0.3,0.3,0.3]
-    grid_size=[0.005,0.005,0.01]
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # grid_size=[0.003,0.003,0.005]
+    # view_num=4
+
+    min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    max_pos=[0.15,0.3,0.3]
+    grid_size=[0.0024,0.0024,0.005]
     view_num=4
-
-    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
-    # max_pos=[0.15,0.3,0.3]
-    # grid_size=[0.0024,0.0024,0.005]
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -71,7 +72,7 @@ def train(rank, args):
     l = [
             {'params': [model.colours], 'lr': 0.002, "name": "colours"},
             {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
-            {'params': [model.opacities], 'lr': 0.02, "name": "opacity"},
+            {'params': [model.opacities], 'lr': 0.002, "name": "opacity"},
             {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
@@ -138,7 +139,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_bunny.mat", type=str,
+        "--data_path", default="data/frontback_lion.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

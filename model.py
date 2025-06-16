@@ -33,9 +33,9 @@ class GaussianModel(nn.Module):
         self.rotation_activation = torch.nn.functional.normalize
 
         # Initial parameters
-        self.colours=nn.Parameter(0.1*torch.ones((self.num_points,1), dtype=torch.float32))
+        self.colours=nn.Parameter(0.01*torch.ones((self.num_points,1), dtype=torch.float32))
         self.coefficients = nn.Parameter(0.0 * torch.ones((self.num_points,1), dtype=torch.float32))
-        self.opacities = nn.Parameter(0.0 * torch.ones((self.num_points,self.view_num), dtype=torch.float32))
+        self.opacities = nn.Parameter(0.1 * torch.ones((self.num_points,self.view_num), dtype=torch.float32))
         self.pre_act_scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.coefficients)*scale))
 
         # Used by both confocal and nonconfocal
@@ -71,7 +71,7 @@ class GaussianModel(nn.Module):
         return self.opacity_activation(self.coefficients)
     @property
     def get_opacity(self):
-        return self.opacity_activation(self.opacities)
+        return self.opacities**2
     @property
     def get_colour(self):
         return self.colours**2
