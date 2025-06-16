@@ -39,6 +39,7 @@ def train(rank, args):
     decay=2
     scale=0.005
     num_itrs=2001
+    view_num=1
 
     # 场景参数
     # min_pos=[-1.3,0.5,0.65] ## phasor_id5的参数(shelf_targets_lighton_data)
@@ -86,9 +87,10 @@ def train(rank, args):
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
     l = [
-            {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
-            {'params': [model.pre_act_opacities], 'lr': 0.025, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
+            {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
+            {'params': [model.opacites], 'lr': 0.02, "name": "opacity"},
+            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
@@ -129,16 +131,14 @@ def train(rank, args):
                 if itr%500==0:
                     local_params = model.get_all_parameters()
                     rho =local_params["rho"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-                    o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2],view_num).cpu().numpy()
+                    c= local_params["c"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
                     scale= local_params["scale"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-                    scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"o":o,"scale":scale})
-    
-    local_params = model.get_all_parameters()
-    dic = gather_all_parameters(rank, args.world_size, local_params,pixels)
+                    scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"opacity":o,"c":c,"scale":scale})
 
     if rank == 0:
-        scipy.io.savemat("temp/result.mat",dic)
-        rho=dic["rho"]
+        # scipy.io.savemat("temp/result.mat",dic)
+        # rho=dic["rho"]
         intensity=np.max(rho,axis=2)
         depth=np.argmax(rho,axis=2)
         intensity=(intensity-np.min(intensity))/(np.max(intensity)-np.min(intensity))

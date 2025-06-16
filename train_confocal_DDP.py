@@ -28,20 +28,21 @@ def train(rank, args):
     )
 
     confocal=True
+    view_num=1
     decay=4
     scale=0.002 # set `scale` smaller than the grid size
     train_fast=True # for more complex scene, set `train_fast`=False
     filter=False # for uncontinous histogram, set `filter`=True
-    num_itrs=3001
+    num_itrs=1001
 
     # 场景参数
     # min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
     # max_pos=[0.4,0.6,1.5]
     # grid_size=[0.005,0.005,0.005]
 
-    # min_pos=[-0.5,-0.5,0.45] ## bunny的参数
-    # max_pos=[0.5,0.5,1.25]
-    # grid_size=0.015
+    min_pos=[-0.5,-0.5,0.45] ## bunny的参数
+    max_pos=[0.5,0.5,1.25]
+    grid_size=0.015
 
     # min_pos=[-1.1,-0.55,1.25] ## fk-bike数据参数
     # max_pos=[1.1,0.85,1.55]
@@ -105,11 +106,11 @@ def train(rank, args):
     # scale=0.0005
     # num_itrs=10001
 
-    min_pos=[-0.95,-0.95,0.75] ## yejuntian_TCYV数据
-    max_pos=[0.95,0.95,1.95]
-    grid_size=[0.0075,0.0075,0.0075] # [0.0075,0.0075,0.005]
-    scale=0.002
-    train_fast=False
+    # min_pos=[-0.95,-0.95,0.75] ## yejuntian_TCYV_clip数据
+    # max_pos=[0.95,0.95,1.95]
+    # grid_size=[0.0075,0.0075,0.0075] # [0.0075,0.0075,0.005]
+    # scale=0.002
+    # train_fast=False
 
     dataset= NLOSDataset(args.data_path,filter=filter)
     bin_resolution=dataset.bin_resolution
@@ -142,13 +143,13 @@ def train(rank, args):
     if train_fast:
         l = [
                 {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
-                {'params': [model.pre_act_opacities], 'lr': 0.02, "name": "opacity"},
+                {'params': [model.coefficients], 'lr': 0.02, "name": "coefficients"},
                 {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
             ]
     else:
         l = [
                 {'params': [model.colours], 'lr': 0.001, "name": "colours"},
-                {'params': [model.pre_act_opacities], 'lr': 0.01, "name": "opacity"},
+                {'params': [model.coefficients], 'lr': 0.01, "name": "coefficients"},
                 {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
             ]
     optimizer = torch.optim.Adam(l)
@@ -190,16 +191,14 @@ def train(rank, args):
                 if itr%500==0:
                     local_params = model.get_all_parameters()
                     rho =local_params["rho"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-                    o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+                    o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2],view_num).cpu().numpy()
+                    c= local_params["c"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
                     scale= local_params["scale"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-                    scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"o":o,"scale":scale})
-    
-    local_params = model.get_all_parameters()
-    dic = gather_all_parameters(rank, args.world_size, local_params,pixels)
+                    scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"opacity":o,"c":c,"scale":scale})
 
     if rank == 0:
-        scipy.io.savemat("temp/result.mat",dic)
-        rho=dic["rho"]
+        # scipy.io.savemat("temp/result.mat",dic)
+        # rho=dic["rho"]
         intensity=np.max(rho,axis=2)
         depth=np.argmax(rho,axis=2)
         intensity=(intensity-np.min(intensity))/(np.max(intensity)-np.min(intensity))
@@ -216,7 +215,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/yejuntian_TCYV_clip.mat", type=str,
+        "--data_path", default="data/bunny.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

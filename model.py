@@ -16,12 +16,14 @@ def inverse_sigmoid(x):
 class GaussianModel(nn.Module):
     def __init__(self, num_points, scale,
                  bin_resolution=0.01,num_bins=512,t0=0,decay=2.0,confocal=True,
-                 laserOrigin=None,cameraPos=[0,0,0],cameraOrigin=[0,0,0] # nonconfocal
+                 laserOrigin=None,cameraPos=[0,0,0],cameraOrigin=[0,0,0], # nonconfocal
+                 view_num=1
                  ):
         super().__init__()
 
         self.confocal=confocal
         self.num_points=num_points
+        self.view_num=view_num
 
         # activation function
         self.scaling_activation = torch.exp
@@ -32,8 +34,9 @@ class GaussianModel(nn.Module):
 
         # Initial parameters
         self.colours=nn.Parameter(0.1*torch.ones((self.num_points,1), dtype=torch.float32))
-        self.pre_act_opacities = nn.Parameter(0.0 * torch.ones((self.num_points,1), dtype=torch.float32))
-        self.pre_act_scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.pre_act_opacities)*scale))
+        self.coefficients = nn.Parameter(0.0 * torch.ones((self.num_points,1), dtype=torch.float32))
+        self.opacities = nn.Parameter(0.0 * torch.ones((self.num_points,self.view_num), dtype=torch.float32))
+        self.pre_act_scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.coefficients)*scale))
 
         # Used by both confocal and nonconfocal
         self.bin_resolution=bin_resolution
@@ -47,12 +50,13 @@ class GaussianModel(nn.Module):
         self.cameraOrigin=cameraOrigin
 
     def parameters(self):
-        return [self.pre_act_scales, self.colours, self.pre_act_opacities]
+        return [self.pre_act_scales, self.colours, self.coefficients,self.opacities]
     
     def get_all_parameters(self):
         return {
             'scale': self.get_scaling.clone().detach(),
             'rho': self.get_colour.clone().detach(),
+            'c': self.get_coefficient.clone().detach(),
             'o': self.get_opacity.clone().detach()
         }
     
@@ -63,19 +67,25 @@ class GaussianModel(nn.Module):
     def get_scaling(self):
         return self.scaling_activation(self.pre_act_scales)
     @property
+    def get_coefficient(self):
+        return self.opacity_activation(self.coefficients)
+    @property
     def get_opacity(self):
-        return self.opacity_activation(self.pre_act_opacities)
+        return self.opacity_activation(self.opacities)
     @property
     def get_colour(self):
         return self.colours**2
     
     # 利用极坐标的形式计算histogram
-    def render_conf_hist2(self,means, scan_point):
+    def render_conf_hist2(self,means, scan_point,view_id=0):
         # 计算强度
-        intensity=self.get_colour.flatten() # (N,)
+        if type(view_id)!=type(0):
+            view_id=view_id.item()
+            
+        intensity=self.get_opacity[:,view_id].flatten()*self.get_colour.flatten() # (N,)
 
         # 计算两组基的系数
-        coeff=self.get_opacity.flatten().unsqueeze(1) # (N,1)
+        coeff=self.get_coefficient.flatten().unsqueeze(1) # (N,1)
 
         # 计算片元中心的深度:scan_point is [1,3]
         r0 = torch.norm(means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
@@ -101,12 +111,14 @@ class GaussianModel(nn.Module):
 
         return hist
 
-    def render_nonconf_hist2(self, means,laserPos):
+    def render_nonconf_hist2(self, means,laserPos,view_id=0):
         # 计算强度
-        intensity=self.get_colour.flatten() # (N,)
+        if type(view_id)!=type(0):
+            view_id=view_id.item()
+        intensity=self.get_opacity[:,view_id].flatten()*self.get_colour.flatten() # (N,)
 
         # 计算两组基的系数
-        coeff=self.pre_act_opacities.flatten().unsqueeze(1) # (N,1)
+        coeff=self.coefficients.flatten().unsqueeze(1) # (N,1)
 
         # 计算激光点和相机点到两边的距离
         r0_=torch.norm(self.cameraPos-self.cameraOrigin, p=2, dim=1)
@@ -139,57 +151,57 @@ class GaussianModel(nn.Module):
 
         return hist
 
-    def forward(self,means,scan_point):
+    def forward(self,means,scan_point,view_id=0):
         if self.confocal:
-            return self.render_conf_hist2(means,scan_point)
+            return self.render_conf_hist2(means,scan_point,view_id)
         else:
-            return self.render_nonconf_hist2(means,scan_point)
+            return self.render_nonconf_hist2(means,scan_point,view_id)
 
-def gather_all_parameters(rank, world_size, local_params,pixels):
-    """
-    收集所有GPU上的参数到主GPU
-    返回: 主GPU上包含所有参数的字典
-    """
-    # 为每个参数创建存储列表
-    scale_list = [torch.zeros_like(local_params['scale']) for _ in range(world_size)]
-    rho_list = [torch.zeros_like(local_params['rho']) for _ in range(world_size)]
-    o_list = [torch.zeros_like(local_params['o']) for _ in range(world_size)]
+# def gather_all_parameters(rank, world_size, local_params,pixels):
+#     """
+#     收集所有GPU上的参数到主GPU
+#     返回: 主GPU上包含所有参数的字典
+#     """
+#     # 为每个参数创建存储列表
+#     scale_list = [torch.zeros_like(local_params['scale']) for _ in range(world_size)]
+#     rho_list = [torch.zeros_like(local_params['rho']) for _ in range(world_size)]
+#     o_list = [torch.zeros_like(local_params['c']) for _ in range(world_size)]
     
-    # 收集所有GPU的参数
-    dist.all_gather(scale_list, local_params['scale'])
-    dist.all_gather(rho_list, local_params['rho'])
-    dist.all_gather(o_list, local_params['o'])
+#     # 收集所有GPU的参数
+#     dist.all_gather(scale_list, local_params['scale'])
+#     dist.all_gather(rho_list, local_params['rho'])
+#     dist.all_gather(o_list, local_params['c'])
     
-    if rank == 0:
-        # 在主GPU上拼接所有参数
-        rho = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
-        rho[0::2, 0::2,:] = rho_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()# 按照奇偶位置插入
-        rho[0::2, 1::2,:] = rho_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        rho[1::2, 0::2,:] = rho_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        rho[1::2, 1::2,:] = rho_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#     if rank == 0:
+#         # 在主GPU上拼接所有参数
+#         rho = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
+#         rho[0::2, 0::2,:] = rho_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()# 按照奇偶位置插入
+#         rho[0::2, 1::2,:] = rho_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         rho[1::2, 0::2,:] = rho_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         rho[1::2, 1::2,:] = rho_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
 
-        scale = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
-        scale[0::2, 0::2,:] = scale_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        scale[0::2, 1::2,:] = scale_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        scale[1::2, 0::2,:] = scale_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        scale[1::2, 1::2,:] = scale_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         scale = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
+#         scale[0::2, 0::2,:] = scale_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         scale[0::2, 1::2,:] = scale_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         scale[1::2, 0::2,:] = scale_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         scale[1::2, 1::2,:] = scale_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
 
-        o = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
-        o[0::2, 0::2,:] = o_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        o[0::2, 1::2,:] = o_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        o[1::2, 0::2,:] = o_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
-        o[1::2, 1::2,:] = o_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         o = torch.zeros(pixels[0], pixels[1], pixels[2], dtype=torch.float32, device="cpu")
+#         o[0::2, 0::2,:] = o_list[0].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         o[0::2, 1::2,:] = o_list[1].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         o[1::2, 0::2,:] = o_list[2].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
+#         o[1::2, 1::2,:] = o_list[3].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu()
         
-        return {"rho":rho.numpy(),"scale":scale.numpy(),"o":o.numpy()}
+#         return {"rho":rho.numpy(),"scale":scale.numpy(),"o":o.numpy()}
     
-    # if rank == 0:
-    #     # 在主GPU上拼接所有参数
-    #     rho = local_params['rho'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-    #     scale = local_params['scale'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-    #     o = local_params['o'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
-    #     return {"rho":rho,"scale":scale,"o":o}
+#     # if rank == 0:
+#     #     # 在主GPU上拼接所有参数
+#     #     rho = local_params['rho'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+#     #     scale = local_params['scale'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+#     #     o = local_params['o'].view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
+#     #     return {"rho":rho,"scale":scale,"o":o}
     
-    return None
+#     return None
 
 def save_parameters(all_params, save_dir="temp"):
     os.makedirs(save_dir, exist_ok=True)

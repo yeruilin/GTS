@@ -1,5 +1,4 @@
-### 测试分布式训练
-# 训练共焦数据
+### 多视角重建
 
 import torch
 import torch.distributed as dist
@@ -31,31 +30,17 @@ def train(rank, args):
     decay=4
     scale=0.002
     num_itrs=1001
-    view_num=1
 
-    # 场景参数
-    min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
-    max_pos=[0.5,0.5,1.75]
-    grid_size=[0.015,0.015,0.005]
+    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    max_pos=[0.3,0.3,0.3]
+    grid_size=[0.005,0.005,0.01]
+    view_num=4
 
-    # min_pos=[-0.7,-0.7,0.7] ## random-statue数据参数
-    # max_pos=[0.7,0.7,1.5]
-    # grid_size=0.0075
+    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    # max_pos=[0.15,0.3,0.3]
+    # grid_size=[0.0024,0.0024,0.005]
 
-    # min_pos=[-0.9,-0.9,0.8] ## random_seahorse数据参数
-    # max_pos=[0.9,0.9,1.6]
-    # grid_size=[0.015,0.015,0.005]
-
-    # min_pos=[-0.9,-0.9,0.7] ## random_turntable数据参数
-    # max_pos=[0.9,0.9,1.4]
-    # grid_size=[0.007,0.007,0.005]
-    # num_itrs=1001
-
-    # min_pos=[-0.9,-0.9,0.7] ## random_turtle数据参数
-    # max_pos=[0.9,0.9,1.4]
-    # grid_size=[0.007,0.007,0.005]
-
-    dataset= RandomScanDataset(args.data_path)
+    dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
 
     num_bins=dataset.M
@@ -77,7 +62,7 @@ def train(rank, args):
     print(xyz.shape)
     
     # 创建模型并移动到当前GPU
-    model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal).to(rank)
+    model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal,view_num=view_num).to(rank)
 
     ddp_model = DDP(model, device_ids=[rank])
     
@@ -105,10 +90,11 @@ def train(rank, args):
 
             laserPos=data["point"].to(rank)
             gt_hist=data["hist"].reshape(-1).to(rank)
+            view_id=data["view_id"]
             
             optimizer.zero_grad()
 
-            hist = ddp_model(xyz,laserPos)
+            hist = ddp_model(xyz,laserPos,view_id)
 
             # 每个结点计算损失，DDP会自动将梯度all-reduce，实际上每个GPU分别进行了拟合
             loss += torch.mean((hist-gt_hist).abs())
@@ -132,7 +118,7 @@ def train(rank, args):
                     c= local_params["c"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
                     scale= local_params["scale"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
                     scipy.io.savemat(f"temp/result{itr}.mat",{"rho":rho,"opacity":o,"c":c,"scale":scale})
-
+    
     if rank == 0:
         # scipy.io.savemat("temp/result.mat",dic)
         # rho=dic["rho"]
@@ -152,7 +138,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/random_nt.mat", type=str,
+        "--data_path", default="data/frontback_bunny.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
