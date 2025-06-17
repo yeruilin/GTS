@@ -40,6 +40,7 @@ def train(rank, args):
     max_pos=[0.15,0.3,0.3]
     grid_size=[0.0024,0.0024,0.005]
     view_num=4
+    num_itrs=2001
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -72,7 +73,7 @@ def train(rank, args):
     l = [
             {'params': [model.colours], 'lr': 0.002, "name": "colours"},
             {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
-            {'params': [model.opacities], 'lr': 0.002, "name": "opacity"},
+            {'params': [model.opacities], 'lr': 0.02, "name": "opacity"},
             {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)

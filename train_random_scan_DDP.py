@@ -32,28 +32,34 @@ def train(rank, args):
     scale=0.002
     num_itrs=1001
     view_num=1
+    train_fast=True
 
     # 场景参数
-    min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
-    max_pos=[0.5,0.5,1.75]
-    grid_size=[0.015,0.015,0.005]
+    # min_pos=[-0.5,-0.5,0.95] ## random-nt数据参数
+    # max_pos=[0.5,0.5,1.75]
+    # grid_size=[0.015,0.015,0.005]
 
     # min_pos=[-0.7,-0.7,0.7] ## random-statue数据参数
     # max_pos=[0.7,0.7,1.5]
     # grid_size=0.0075
 
-    # min_pos=[-0.9,-0.9,0.8] ## random_seahorse数据参数
-    # max_pos=[0.9,0.9,1.6]
-    # grid_size=[0.015,0.015,0.005]
+    min_pos=[-0.9,-1.2,0.7] ## random_seahorse数据参数
+    max_pos=[0.9,0.6,1.4]
+    grid_size=[0.007,0.007,0.005]
+    num_itrs=501
+    train_fast=False
 
     # min_pos=[-0.9,-0.9,0.7] ## random_turntable数据参数
     # max_pos=[0.9,0.9,1.4]
-    # grid_size=[0.007,0.007,0.005]
-    # num_itrs=1001
+    # grid_size=[0.007,0.007,0.0048]
+    # num_itrs=501
+    # train_fast=False
 
-    # min_pos=[-0.9,-0.9,0.7] ## random_turtle数据参数
-    # max_pos=[0.9,0.9,1.4]
+    # min_pos=[-0.9,-0.9,0.65] ## random_turtle数据参数
+    # max_pos=[0.9,0.9,1.35]
     # grid_size=[0.007,0.007,0.005]
+    # num_itrs=501
+    # train_fast=False
 
     dataset= RandomScanDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -83,12 +89,18 @@ def train(rank, args):
     
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
-    l = [
-            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
-            {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
-            {'params': [model.opacities], 'lr': 0.02, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
-        ]
+    if train_fast:
+        l = [
+                {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
+                {'params': [model.coefficients], 'lr': 0.02, "name": "coefficients"},
+                {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            ]
+    else:
+        l = [
+                {'params': [model.colours], 'lr': 0.001, "name": "colours"},
+                {'params': [model.coefficients], 'lr': 0.01, "name": "coefficients"},
+                {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            ]
     optimizer = torch.optim.Adam(l)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
     
@@ -152,7 +164,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/random_nt.mat", type=str,
+        "--data_path", default="data/random_seahorse.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
