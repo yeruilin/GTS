@@ -35,11 +35,11 @@ def run_training(args):
     # object_center=(-0.20,0.05,1.40)
     # radius=[0.825,0.75,0.25] ## phasor_id5的参数
     # object_center=(-0.625,1.25,0.95)
-    radius=[0.7,0.7,0.15] ## phasor_id11的参数
-    object_center=(0,0,0.95)
+    # radius=[0.7,0.7,0.15] ## phasor_id11的参数
+    # object_center=(0,0,0.95)
 
     gaussians = Gaussians(
-        num_points=20000, init_type="random",
+        num_points=30000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale
     )

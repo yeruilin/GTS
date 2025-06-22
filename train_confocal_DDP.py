@@ -36,13 +36,13 @@ def train(rank, args):
     num_itrs=1001
 
     # 场景参数
-    # min_pos=[-0.4,-0.1,0.9] ## teapot数据的参数 
-    # max_pos=[0.4,0.6,1.5]
+    # min_pos=[-0.5,-0.5,0.4] ## teapot数据的参数 
+    # max_pos=[0.5,0.5,1.0]
     # grid_size=[0.005,0.005,0.005]
 
     min_pos=[-0.5,-0.5,0.45] ## bunny的参数
-    max_pos=[0.5,0.5,1.25]
-    grid_size=0.015
+    max_pos=[0.5,0.5,1.15]
+    grid_size=[0.007,0.007,0.01]
 
     # min_pos=[-1.1,-0.55,1.25] ## fk-bike数据参数
     # max_pos=[1.1,0.85,1.55]
@@ -112,17 +112,17 @@ def train(rank, args):
     # scale=0.002
     # train_fast=False
 
-    min_pos=[-0.9,-0.9,0.7] ## yejuntian_turntable数据参数
-    max_pos=[0.9,0.9,1.4]
-    grid_size=[0.007,0.007,0.0048]
-    num_itrs=501
-    train_fast=False
+    # min_pos=[-0.9,-0.9,0.7] ## yejuntian_turntable数据参数
+    # max_pos=[0.9,0.9,1.4]
+    # grid_size=[0.007,0.007,0.0048]
+    # num_itrs=501
+    # train_fast=False
 
-    min_pos=[-0.9,-0.9,0.67] ## yejuntian_turtle数据参数
-    max_pos=[0.9,0.9,1.37]
-    grid_size=[0.007,0.007,0.005]
-    num_itrs=501
-    train_fast=False
+    # min_pos=[-0.9,-0.9,0.67] ## yejuntian_turtle数据参数
+    # max_pos=[0.9,0.9,1.37]
+    # grid_size=[0.007,0.007,0.005]
+    # num_itrs=501
+    # train_fast=False
 
     dataset= NLOSDataset(args.data_path,filter=filter)
     bin_resolution=dataset.bin_resolution
@@ -227,7 +227,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/yejuntian_turtle.mat", type=str,
+        "--data_path", default="data/bunny.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
