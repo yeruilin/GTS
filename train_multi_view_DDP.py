@@ -30,17 +30,24 @@ def train(rank, args):
     decay=4
     scale=0.002
     num_itrs=501
+    train_fast=True
 
     # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
     # max_pos=[0.3,0.3,0.3]
     # grid_size=[0.003,0.003,0.005]
     # view_num=4
 
-    min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
-    max_pos=[0.15,0.3,0.3]
-    grid_size=[0.0024,0.0024,0.005]
-    view_num=4
-    num_itrs=2001
+    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    # max_pos=[0.15,0.3,0.3]
+    # grid_size=[0.0024,0.0024,0.005]
+    # view_num=4
+    # num_itrs=2001
+
+    min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
+    max_pos=[0.3,0.3,0.3]
+    grid_size=[0.003,0.003,0.01]
+    view_num=3
+    train_fast=False
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -70,12 +77,21 @@ def train(rank, args):
     
     # 优化器
     # optimizer = optim.Adam(ddp_model.parameters(), lr=0.001)
-    l = [
-            {'params': [model.colours], 'lr': 0.002, "name": "colours"},
+    if train_fast:
+        l = [
+            {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
             {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
             {'params': [model.opacities], 'lr': 0.02, "name": "opacity"},
             {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
         ]
+    else:
+        l = [
+                {'params': [model.colours], 'lr': 0.001, "name": "colours"},
+                {'params': [model.coefficients], 'lr': 0.01, "name": "coefficients"},
+                {'params': [model.opacities], 'lr': 0.01, "name": "opacity"},
+                {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            ]
+    
     optimizer = torch.optim.Adam(l)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
     
@@ -140,7 +156,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_lion.mat", type=str,
+        "--data_path", default="data/frontback_cylinder.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
