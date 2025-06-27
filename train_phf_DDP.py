@@ -90,7 +90,7 @@ def train(rank, args):
             {'params': [model.colours], 'lr': 0.002, "name": "colours"},
             {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
             {'params': [model.opacites], 'lr': 0.02, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
+            {'params': [model.scales], 'lr': 0.002, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)

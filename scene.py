@@ -372,7 +372,7 @@ class Scene:
         quats = torch.zeros([colours.shape[0],4],dtype=colours.dtype,device=colours.device)
         quats[:,3]=1.0
         scales = self.gaussians.get_scaling[idxs]
-        opacities = self.gaussians.get_opacity[idxs]
+        opacities = self.gaussians.get_opacity[idxs].flatten()
         z_vals = z_vals[idxs]
         means_3D = self.gaussians.means[idxs]
 

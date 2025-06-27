@@ -11,92 +11,33 @@ from data_utils import load_gaussians_from_ply
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
 
-def get_expon_lr_func(
-    lr_init, lr_final, lr_delay_steps=0, lr_delay_mult=1.0, max_steps=1000000
-):
-    """
-    Copied from Plenoxels
-
-    Continuous learning rate decay function. Adapted from JaxNeRF
-    The returned rate is lr_init when step=0 and lr_final when step=max_steps, and
-    is log-linearly interpolated elsewhere (equivalent to exponential decay).
-    If lr_delay_steps>0 then the learning rate will be scaled by some smooth
-    function of lr_delay_mult, such that the initial learning rate is
-    lr_init*lr_delay_mult at the beginning of optimization but will be eased back
-    to the normal learning rate when steps>lr_delay_steps.
-    :param conf: config subtree 'lr' or similar
-    :param max_steps: int, the number of steps during optimization.
-    :return HoF which takes step as input
-    """
-
-    def helper(step):
-        if step < 0 or (lr_init == 0.0 and lr_final == 0.0):
-            # Disable this parameter
-            return 0.0
-        if lr_delay_steps > 0:
-            # A kind of reverse cosine decay.
-            delay_rate = lr_delay_mult + (1 - lr_delay_mult) * np.sin(
-                0.5 * np.pi * np.clip(step / lr_delay_steps, 0, 1)
-            )
-        else:
-            delay_rate = 1.0
-        t = np.clip(step / max_steps, 0, 1)
-        log_lerp = np.exp(np.log(lr_init) * (1 - t) + np.log(lr_final) * t)
-        return delay_rate * log_lerp
-
-    return helper
-
 class Gaussians:
 
     def __init__(
         self, init_type: str, device: str, load_path: Optional[str] = None,
         num_points: Optional[int] = None, isotropic: Optional[bool] = None,
-        colour_dim=3,extent=1.0,center=(0,0,0),scale=0.01
+        colour_dim=3,extent=1.0,center=(0,0,0),scale=0.01,view_num=1
     ):
 
         self.device = device
         self.colour_dim=colour_dim
+        self.view_num=view_num
 
-        # 激活函数
+        # activation function
         self.scaling_activation = torch.exp
         self.scaling_inverse_activation = torch.log
-
         self.opacity_activation = torch.sigmoid
         self.inverse_opacity_activation = inverse_sigmoid
-
         self.rotation_activation = torch.nn.functional.normalize
 
         if init_type == "gaussians":
-            if isotropic is not None:
-                raise ValueError((
-                    "Isotropy/Anisotropy will be determined from pre-trained gaussians. "
-                    "Please set isotropic to None."
-                ))
-            if load_path is None:
-                raise ValueError
-
             data, is_isotropic = self._load_gaussians(load_path)
             self.is_isotropic = is_isotropic
 
         elif init_type == "points":
-            if isotropic is not None and type(isotropic) is not bool:
-                raise TypeError("isotropic must be either None or True or False.")
-            if load_path is None:
-                raise ValueError
-
-            if isotropic is None:
-                self.is_isotropic = False
-            else:
-                self.is_isotropic = isotropic
-
             data = self._load_points(load_path)
 
         elif init_type == "random":
-            if isotropic is not None and type(isotropic) is not bool:
-                raise TypeError("isotropic must be either None or True or False.")
-            if num_points is None:
-                raise ValueError
-
             if isotropic is None:
                 self.is_isotropic = False
             else:
@@ -109,19 +50,11 @@ class Gaussians:
 
         # 优化变量
         self.means = data["means"]
-        self.pre_act_scales = data["pre_act_scales"]
+        self.scales = data["scales"]
         self.colours = data["colours"]
-        self.pre_act_opacities = data["pre_act_opacities"]
-
-        # 优化相关
-        self.optimizer_type = "default"
-        self.xyz_gradient_accum = torch.empty(0) # training_setup函数中初始化
-        self.denom = torch.empty(0)
-        self.optimizer = None
-        self.percent_dense = 0.01
-        self.spatial_lr_scale = 1.0 # 和空间大小有关的参数
-
-        self.sphere=False # 是否使用球谐函数
+        self.opacities = data["opacities"]
+        self.coefficients = data["coefficients"]
+        self.sphere=False
 
         if self.device!="cpu":
             self.to(self.device)
@@ -135,16 +68,17 @@ class Gaussians:
         ply_gaussians = load_gaussians_from_ply(ply_path)
 
         data["means"] = torch.tensor(ply_gaussians["xyz"])
-        data["pre_act_quats"] = torch.tensor(ply_gaussians["rot"])
-        data["pre_act_scales"] = torch.tensor(ply_gaussians["scale"])
-        data["pre_act_opacities"] = torch.tensor(ply_gaussians["opacity"]).squeeze()
+        data["rotations"] = torch.tensor(ply_gaussians["rot"])
+        data["scales"] = torch.tensor(ply_gaussians["scale"])
+        data["opacities"] = torch.tensor(ply_gaussians["opacity"]).squeeze()
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
+        data["coefficients"] = torch.zeros((len(data["means"]),1), dtype=torch.float32)  # (N,)
 
         if self.colour_dim==1:
             data["colours"]=data["colours"][:,0:1]
 
         is_isotropic = False
-        if data["pre_act_scales"].shape[1] != 3:
+        if data["scales"].shape[1] != 3:
             is_isotropic=True
 
         # 计算场景大致范围
@@ -166,9 +100,10 @@ class Gaussians:
         # Initializing means using the provided point cloud
         data["means"] = torch.tensor(means.astype(np.float32))  # (N, 3)
 
-        # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
+        # Initializing opacities such that all when sigmoid is applied to opacities,
         # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = 8.0 * torch.ones((len(means),), dtype=torch.float32)  # (N,)
+        data["opacities"] = 8.0 * torch.ones((len(means),self.view_num), dtype=torch.float32)  # (N,)
+        data["coefficients"] = torch.zeros((len(means),1), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
         data["colours"] = torch.rand((len(means), self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
@@ -176,14 +111,14 @@ class Gaussians:
         # Initializing quaternions to be the identity quaternion
         quats = torch.zeros((len(means), 4), dtype=torch.float32)  # (N, 4)
         quats[:, 0] = 1.0
-        data["pre_act_quats"] = quats  # (N, 4)
+        data["rotations"] = quats  # (N, 4)
 
         # Initializing scales using the mean distance of each point to its 50 nearest points
         dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
-        data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
+        data["scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
 
         if not self.is_isotropic:
-            data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
+            data["scales"] = data["scales"].repeat(1, 3)  # (N, 3)
         
         # 计算场景大致范围
         self.center=torch.mean(data["means"],dim=0)
@@ -203,76 +138,79 @@ class Gaussians:
         if type(radius)==type([]):
             self.radius=max(radius)
             radius=torch.tensor(radius).view(1,3)
+        elif type(radius)==type(np.array([])):
+            self.radius=torch.Tensor(radius)
         else:
             self.radius=radius
             
-        data["means"]= radius*(means_-0.5)*2
+        data["means"]= self.radius*(means_-0.5)*2
         data["means"]+=self.center.view(1,3)
 
-        # Initializing opacities such that all when sigmoid is applied to pre_act_opacities,
-        # we will have a opacity value close to (but less than) 1.0
-        data["pre_act_opacities"] = 8.0 * torch.ones((num_points,), dtype=torch.float32)  # (N,)
+        # Initializing opacities such that all when sigmoid is applied to opacities
+        data["opacities"] = torch.zeros((num_points,self.view_num), dtype=torch.float32)  # (N,)
+
+        data["coefficients"] = torch.zeros((num_points,1), dtype=torch.float32)  # (N,)
 
         # Initializing colors randomly
-        data["colours"] = 0.1*torch.ones((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
+        data["colours"] = 0.01*torch.ones((num_points, self.colour_dim), dtype=torch.float32)  # (N, colour_dim)
 
-        # Initializing scales randomly
-        # data["pre_act_scales"] = torch.log((torch.rand((num_points, 1), dtype=torch.float32) + 1e-6) * 0.01)
-        # Initializing scales using the mean distance of each point to its 50 nearest points
-        # dists, _, _ = knn_points(data["means"].unsqueeze(0), data["means"].unsqueeze(0), K=50)
-        # data["pre_act_scales"] = torch.log(torch.mean(dists[0], dim=1)).unsqueeze(1)  # (N, 1)
-        data["pre_act_scales"] = torch.log(torch.ones((num_points,1),dtype=torch.float32)*scale)  # (N, 1)
+        # Initializing scales
+        data["scales"] = torch.log(torch.ones((num_points,1),dtype=torch.float32)*scale)  # (N, 1)
 
         if not self.is_isotropic:
-            data["pre_act_scales"] = data["pre_act_scales"].repeat(1, 3)  # (N, 3)
+            data["scales"] = data["scales"].repeat(1, 3)  # (N, 3)
 
         return data
 
     def check_if_trainable(self):
 
-        attrs = ["means", "pre_act_scales", "colours", "pre_act_opacities"]
+        attrs = ["means", "scales", "colours", "opacities"]
         if not self.is_isotropic:
-            attrs += ["pre_act_quats"]
+            attrs += ["rotations"]
 
         for attr in attrs:
             param = getattr(self, attr)
             if not getattr(param, "requires_grad", False):
                 raise Exception("Please use function make_trainable to make parameters trainable")
 
-        if self.is_isotropic and self.pre_act_quats.requires_grad:
+        if self.is_isotropic and self.rotations.requires_grad:
             raise RuntimeError("You do not need to optimize quaternions in isotropic mode.")
 
     def to(self,device):
         self.device=device
         self.means = self.means.to(self.device)
-        self.pre_act_scales = self.pre_act_scales.to(self.device)
+        self.scales = self.scales.to(self.device)
         self.colours = self.colours.to(self.device)
-        self.pre_act_opacities = self.pre_act_opacities.to(self.device)
+        self.opacities = self.opacities.to(self.device)
+        self.coefficients = self.coefficients.to(self.device)
 
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
         if self.sphere:
             self.spherical_harmonics = self.spherical_harmonics.to(self.device)
 
     @staticmethod
-    def apply_activations(pre_act_quats, pre_act_scales, pre_act_opacities):
+    def apply_activations(rotations, scales, opacities):
 
         # Convert logscales to scales
-        scales = torch.exp(pre_act_scales)
+        scales = torch.exp(scales)
 
         # Normalize quaternions
-        quats = torch.nn.functional.normalize(pre_act_quats)
+        quats = torch.nn.functional.normalize(rotations)
 
         # Bound opacities between (0, 1)
-        opacities = torch.sigmoid(pre_act_opacities)
+        opacities = torch.sigmoid(opacities)
 
         return quats, scales, opacities
     
     @property
     def get_scaling(self):
-        return self.scaling_activation(self.pre_act_scales)
+        return self.scaling_activation(self.scales)
     @property
     def get_opacity(self):
-        return self.opacity_activation(self.pre_act_opacities)
+        return self.opacity_activation(self.opacities)
+    @property
+    def get_coefficient(self):
+        return self.opacity_activation(self.coefficients)
     @property
     def get_xyz(self):
         return self.means
@@ -298,9 +236,10 @@ class Gaussians:
         new_scaling = self.scaling_inverse_activation(self.get_scaling.repeat(copy_num,1) / (0.8*copy_num))
         # 拷贝后旋转、颜色、透明度不变
         new_colours = self.colours.repeat(copy_num,1)
-        new_opacities = self.pre_act_opacities.repeat(copy_num)
+        new_opacities = self.opacities.repeat(copy_num,1)
+        new_coefficients = self.coefficients.repeat(copy_num,1)
 
-        self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling)
+        self.densification_postfix(new_xyz, new_colours, new_opacities, new_scaling,new_coefficients)
 
     def density_and_split1(self,selected_pts_mask,copy_num=2,save_old=True):
         stds = self.get_scaling[selected_pts_mask].repeat(copy_num,1)
@@ -311,50 +250,80 @@ class Gaussians:
         new_xyz_=self.get_xyz[selected_pts_mask]
         new_scaling_ = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask] / (0.7*copy_num)) # 拷贝后scale下降
         new_colours_ = self.colours[selected_pts_mask]
-        new_opacity_ = self.pre_act_opacities[selected_pts_mask]
+        new_opacity_ = self.opacities[selected_pts_mask]
+        new_coefficients_=self.coefficients[selected_pts_mask]
 
         # 拷贝后片元中心略有平移
         new_xyz = samples + new_xyz_.repeat(copy_num, 1)
         new_scaling=new_scaling_.repeat(copy_num,1)
         # 拷贝后旋转、颜色、透明度不变
         new_colours = new_colours_.repeat(copy_num,1)
-        new_opacity=new_opacity_.repeat(copy_num)
+        new_opacity=new_opacity_.repeat(copy_num,1)
+        new_coefficients=new_coefficients_.repeat(copy_num,1)
 
         # 将新的split产生的tensor和之前的tensor合并到一起
-        self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling)
+        self.densification_postfix(new_xyz, new_colours, new_opacity, new_scaling,new_coefficients)
         # 再把分裂前的tensor删除掉
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(copy_num * selected_pts_mask.sum(), device=self.device, dtype=bool)))
         self.prune_points(prune_filter)
         
         # 之前的位置依然保留，但是大小下降
         if save_old:
-            self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_)
+            self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_,new_coefficients_)
     
     def set_scale(self,selected_pts_mask,new_scale):
         # 用于替代之前的片元
         new_xyz_=self.get_xyz[selected_pts_mask]
         new_scaling_ = self.scaling_inverse_activation(torch.ones_like(self.get_scaling[selected_pts_mask],device=self.device)*new_scale) # 拷贝后scale下降
         new_colours_ = self.colours[selected_pts_mask]
-        new_opacity_ = self.pre_act_opacities[selected_pts_mask]
+        new_opacity_ = self.opacities[selected_pts_mask]
+        new_coefficients_ = self.coefficients[selected_pts_mask]
 
         # 再把分裂前的tensor删除掉
         self.prune_points(selected_pts_mask)
         # 之前的位置依然保留，但是大小下降
-        self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_)
+        self.densification_postfix(new_xyz_, new_colours_, new_opacity_, new_scaling_,new_coefficients_)
 
-    def training_setup(self, training_args):
-        self.pre_act_scales.requires_grad=True
+    # def training_setup(self, training_args):
+    #     self.scales.requires_grad=True
+    #     self.colours.requires_grad=True
+    #     self.opacities.requires_grad=True
+
+    #     l = [
+    #         # {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
+    #         {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
+    #         {'params': [self.opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
+    #         {'params': [self.scales], 'lr': training_args.scaling_lr, "name": "scaling"}
+    #     ]
+
+    #     self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+
+    def training_setup(self,l_dict=None,train_fast=True):
+        self.scales.requires_grad=True
         self.colours.requires_grad=True
-        self.pre_act_opacities.requires_grad=True
+        self.opacities.requires_grad=True
+        self.coefficients.requires_grad=True
 
-        l = [
-            # {'params': [self.means], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
-            {'params': [self.colours], 'lr': training_args.feature_lr, "name": "colours"},
-            {'params': [self.pre_act_opacities], 'lr': training_args.opacity_lr, "name": "opacity"},
-            {'params': [self.pre_act_scales], 'lr': training_args.scaling_lr, "name": "scaling"}
-        ]
+        if l_dict==None:
+            if train_fast:
+                l = [
+                    {'params': [self.colours], 'lr': 0.0025, "name": "colour"},
+                    {'params': [self.coefficients], 'lr': 0.02, "name": "coefficient"},
+                    {'params': [self.opacities], 'lr': 0.02, "name": "opacity"},
+                    {'params': [self.scales], 'lr': 0.002, "name": "scaling"}
+                ]
+            else:
+                l = [
+                        {'params': [self.colours], 'lr': 0.001, "name": "colour"},
+                        {'params': [self.coefficients], 'lr': 0.01, "name": "coefficient"},
+                        {'params': [self.opacities], 'lr': 0.01, "name": "opacity"},
+                        {'params': [self.scales], 'lr': 0.001, "name": "scaling"}
+                    ]
+        else:
+            l=l_dict
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=250, gamma=0.8)
     
     # 对高斯片元实现增删
     def _prune_optimizer(self, mask):
@@ -382,9 +351,10 @@ class Gaussians:
 
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
-        self.colours = optimizable_tensors["colours"]
-        self.pre_act_opacities = optimizable_tensors["opacity"]
-        self.pre_act_scales = optimizable_tensors["scaling"]
+        self.colours = optimizable_tensors["colour"]
+        self.opacities = optimizable_tensors["opacity"]
+        self.scales = optimizable_tensors["scaling"]
+        self.coefficients = optimizable_tensors["coefficient"]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
@@ -407,20 +377,23 @@ class Gaussians:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_colours, new_opacities, new_scaling):
+    def densification_postfix(self, new_xyz, new_colours, new_opacities, new_scaling,new_coefficient):
         self.means = torch.cat([self.means,new_xyz],dim=0)
 
         d = {
-        "colours": new_colours,
+        "colour": new_colours,
         "opacity": new_opacities,
-        "scaling" : new_scaling}
+        "scaling" : new_scaling,
+        "coefficient" : new_coefficient
+        }
 
         # 将新生成的tensor拼接到之前的变量上
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
         # 然后重新赋值
-        self.colours = optimizable_tensors["colours"]
-        self.pre_act_opacities = optimizable_tensors["opacity"]
-        self.pre_act_scales = optimizable_tensors["scaling"]
+        self.colours = optimizable_tensors["colour"]
+        self.opacities = optimizable_tensors["opacity"]
+        self.scales = optimizable_tensors["scaling"]
+        self.coefficients = optimizable_tensors["coefficient"]
     
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
@@ -438,9 +411,13 @@ class Gaussians:
         return optimizable_tensors
 
     # 利用极坐标的形式计算histogram
-    def render_conf_hist(self, scan_point,bin_resolution,num_bins,t0,decay=2.0):
+    def render_conf_hist(self, scan_point,bin_resolution,num_bins,t0,decay=2.0,view_id=0):
         # 计算强度
-        intensity=self.get_opacity.flatten()*self.get_colour.flatten() # (N,)
+        if type(view_id)!=type(0):
+            view_id=view_id.item()
+
+        # 计算强度
+        intensity=self.get_opacity[:,view_id].flatten()*self.get_colour.flatten() # (N,)
 
         # 计算片元中心的深度:scan_point is [1,3]
         r0 = torch.norm(self.means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
@@ -467,12 +444,15 @@ class Gaussians:
         return hist
     
     # 利用极坐标的形式计算histogram
-    def render_conf_hist2(self, scan_point,bin_resolution,num_bins,t0=0,decay=2.0):
+    def render_conf_hist2(self, scan_point,bin_resolution,num_bins,t0=0,decay=2.0,view_id=0):
         # 计算强度
-        intensity=self.get_colour.flatten() # (N,)
+        if type(view_id)!=type(0):
+            view_id=view_id.item()
+            
+        intensity=self.get_opacity[:,view_id].flatten()*self.get_colour.flatten() # (N,)
 
         # 计算两组基的系数
-        coeff=self.get_opacity.flatten().unsqueeze(1) # (N,1)
+        coeff=self.get_coefficient.flatten().unsqueeze(1) # (N,1)
 
         # 计算片元中心的深度:scan_point is [1,3]
         r0 = torch.norm(self.means-scan_point, p=2, dim=1).unsqueeze(1) # (N,1)
@@ -499,9 +479,13 @@ class Gaussians:
         return hist
 
     # 利用极坐标的形式计算histogram
-    def render_nonconf_hist(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0):
+    def render_nonconf_hist(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0,view_id=0):
         # 计算强度
-        intensity=self.get_opacity.flatten()*self.get_colour.flatten() # (N,)
+        if type(view_id)!=type(0):
+            view_id=view_id.item()
+
+        # 计算强度
+        intensity=self.get_opacity[:,view_id].flatten()*self.get_colour.flatten() # (N,)
 
         # 计算激光点和相机点到两边的距离
         r0_=torch.norm(cameraPos-cameraOrigin, p=2, dim=1)
@@ -534,12 +518,15 @@ class Gaussians:
 
         return hist
 
-    def render_nonconf_hist2(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0):
+    def render_nonconf_hist2(self, laserPos,laserOrigin,cameraPos,cameraOrigin,bin_resolution,num_bins,t0=0,view_id=0):
         # 计算强度
-        intensity=self.get_colour.flatten() # (N,)
+        if type(view_id)!=type(0):
+            view_id=view_id.item()
+            
+        intensity=self.get_opacity[:,view_id].flatten()*self.get_colour.flatten() # (N,)
 
         # 计算两组基的系数
-        coeff=self.pre_act_opacities.flatten().unsqueeze(1) # (N,1)
+        coeff=self.get_coefficient.flatten().unsqueeze(1) # (N,1)
 
         # 计算激光点和相机点到两边的距离
         r0_=torch.norm(cameraPos-cameraOrigin, p=2, dim=1)

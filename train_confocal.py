@@ -35,9 +35,9 @@ def run_training(args):
     # object_center=(0.0821,0.2270,1.1992)
     # scale=0.008
     
-    # radius=[0.5,0.5,0.4] ## bunny的参数
-    # object_center=(0.0037,0.1018,0.8335)
-    # scale=0.015
+    radius=[0.5,0.5,0.4] ## bunny的参数
+    object_center=(0.0,0.0,0.8335)
+    scale=0.015
 
     # radius=[1.2,1.0,0.5] ## fk-bike数据参数
     # object_center=(0.0,0.2,1.35)
@@ -63,12 +63,12 @@ def run_training(args):
     # num_points=30000
     # ratio=[0.7,0.7,0.4]
 
-    radius=[0.8,0.8,1.0] ## daichen-L数据参数
-    object_center=(-0.1,0.0,5.0)
-    ratio=[0.73,0.85,0.1]
-    scale=0.02
-    num_points=30000
-    decay=0.1
+    # radius=[0.8,0.8,1.0] ## daichen-L数据参数
+    # object_center=(-0.1,0.0,5.0)
+    # ratio=[0.73,0.85,0.1]
+    # scale=0.02
+    # num_points=30000
+    # decay=0.1
 
     # radius=[0.75,0.75,1.0] ## daichen-7数据参数
     # object_center=(-0.3,0.0,5.0)
@@ -189,7 +189,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/teapot.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/bunny.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(

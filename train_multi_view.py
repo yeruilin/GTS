@@ -1,15 +1,12 @@
 import os
 import torch
-import imageio
 import argparse
 import numpy as np
 
-from PIL import Image
-from tqdm import tqdm
 from torch.utils.data import DataLoader
 from data_utils import save_ply,OptimizationParams,plot_hist
 
-from dataset import RandomScanDataset
+from dataset import MultiViewDataset
 import time
 import scipy
 import matplotlib.pyplot as plt
@@ -19,55 +16,54 @@ from gaussian import Gaussians
 ### 随机初始化训练模型
 def run_training(args):
     torch.manual_seed(16)
-
-    if not os.path.exists(args.out_path):
-        os.makedirs(args.out_path, exist_ok=True)
     
-    scale=0.015 # 默认大小
+    confocal=True
+    decay=4
+    scale=0.002
+    num_itrs=501
+    train_fast=False
+    ratio=[0.85,0.85,0.85]
 
-    # # 随机初始化
-    radius=[0.6,0.6,0.4] ## random-nt数据参数
-    object_center=(0.05,0,1.35)
-    scale=0.01
-    # radius=[0.7,0.9,0.4] ## random-statue数据参数
-    # object_center=(0,0,1.1)
-    # scale=0.015
-    # radius=[0.6,0.6,0.6] ## random-bunny数据参数
-    # object_center=(0,0,1.3)
+    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    max_pos=[0.3,0.3,0.3]
+    grid_size=[0.003,0.003,0.005]
+    view_num=4
 
-    # radius=[0.3,0.3,0.3] ## frontback_bunny数据参数
-    # object_center=(0,0,0)
-    # scale=0.03
+    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    # max_pos=[0.15,0.3,0.3]
+    # grid_size=[0.0024,0.0024,0.005]
+    # view_num=4
+    # num_itrs=2001
+
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # grid_size=[0.003,0.003,0.01]
+    # view_num=3
+    # train_fast=False
+
+    dataset= MultiViewDataset(args.data_path)
+    bin_resolution=dataset.bin_resolution
+    device=args.device
+    num_bins=dataset.M
+
+    object_center=np.array(max_pos)/2+np.array(min_pos)/2
+    radius=np.array(max_pos)/2-np.array(min_pos)/2
     
     gaussians = Gaussians(
         num_points=15000, init_type="random",
         device=args.device, isotropic=True,
-        colour_dim=1,extent=radius,center=object_center,scale=scale
+        colour_dim=1,extent=radius,center=object_center,scale=scale,view_num=view_num
     )
 
     save_ply("temp/init.ply",gaussians)
 
     start=time.time()
 
-    dataset= RandomScanDataset(args.data_path)
-    device=args.device
-    bin_resolution=dataset.bin_resolution
-    nums_bin=dataset.M
-
-    print("radius:",gaussians.radius)
-    print("center:",object_center)
-    print("bin resolution:",bin_resolution)
-
-    train_loader = DataLoader(
-        dataset, batch_size=1,shuffle=True
-    )
+    train_loader = DataLoader(dataset, batch_size=1,shuffle=True)
     train_itr = iter(train_loader)
     
     ### 开始训练
-    # 阶段一：清掉无用位置的点
-    opt_param=OptimizationParams()
-    opt_param.scaling_lr=0.005
-    gaussians.training_setup(opt_param)
+    gaussians.training_setup(train_fast=train_fast)
 
     loss_list=[]
 
@@ -84,10 +80,9 @@ def run_training(args):
 
             scan_point=data["point"].to(device)
             gt_hist=data["hist"].reshape(-1).to(device)
+            view_id=data["view_id"]
 
-            # Rendering histogram using gaussian splatting
-            # hist= gaussians.render_conf_hist(scan_point,bin_resolution,nums_bin)
-            hist= gaussians.render_conf_hist2(scan_point,bin_resolution,nums_bin)
+            hist= gaussians.render_conf_hist2(scan_point,bin_resolution,num_bins,dataset.t0,decay,view_id)
 
             loss+=torch.mean((hist-gt_hist).abs())
         
@@ -97,23 +92,25 @@ def run_training(args):
 
         with torch.no_grad():
             gaussians.optimizer.step()
+            gaussians.scheduler.step()
             gaussians.optimizer.zero_grad(set_to_none = True)
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
-        
+
             if itr%50==0:
                 # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
                 # 防止出现太大的片元
-                select_mask=torch.where(gaussians.get_scaling[:,0]>scale, True, False).flatten()
+                select_mask=torch.where(gaussians.get_scaling[:,0]>0.008, True, False).flatten()
                 gaussians.density_and_split1(select_mask,copy_num=1)
                 print(f"split number: {torch.sum(select_mask).item()}")
 
                 # 直接删除太大的片元
-                prune_mask=torch.where(gaussians.get_scaling[:,0]>scale*2, True, False).flatten()
+                prune_mask=torch.where(gaussians.get_scaling[:,0]>0.01, True, False).flatten()
                 gaussians.prune_points(prune_mask)
                 print(f"prune number: {torch.sum(prune_mask).item()}")
 
                 save_ply(f"temp/result{itr}.ply",gaussians)
-                
+
+            if itr%50==0:
                 plot_hist(hist,gt_hist,itr)
 
             if itr==200 or itr%500==0:
@@ -126,35 +123,11 @@ def run_training(args):
                 
             if itr==501:
                 gaussians.densify_and_clone1(copy_num=2,std_multiple=5)
-        
-        # # 在上面的裁剪策略几乎无效的时候，可以把低于均值的位置裁掉，高于均值的进行拷贝
-        # if itr==1000:
-        #     # 删除小于均值的位置
-        #     if thresh==0:
-        #         prune_mask=torch.where(gaussians.get_colour<=torch.mean(gaussians.get_colour), True, False).flatten()
-        #     else:
-        #         prune_mask=torch.where(gaussians.get_colour<=thresh, True, False).flatten()
-            
-        #     # 删除在最外一圈记录残差的点
-        #     ratio=0.85
-        #     prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius*ratio, True, False).flatten()
-        #     prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius*ratio, True, False).flatten()
-        #     prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius*ratio, True, False).flatten()
-        #     prune_mask_=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
-        #     prune_mask=torch.logical_or(prune_mask,prune_mask_)
-
-        #     gaussians.prune_points(prune_mask)
-        #     print(f"prune number: {torch.sum(prune_mask).item()}")
-
-        #     # 剩下的点全都进行拷贝
-        #     gaussians.densify_and_clone1(copy_num=2)
-        #     print(f"Gaussian number left: {gaussians.means.shape[0]}")
     
-    # 删除在最外一圈记录残差的点
-    ratio=0.8
-    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio, True, False).flatten()
-    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio, True, False).flatten()
-    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio, True, False).flatten()
+    ## 删除在最外一圈记录残差的点
+    prune_mask1=torch.where(torch.abs(gaussians.means[:,0]-object_center[0])>radius[0]*ratio[0], True, False).flatten()
+    prune_mask2=torch.where(torch.abs(gaussians.means[:,1]-object_center[1])>radius[1]*ratio[1], True, False).flatten()
+    prune_mask3=torch.where(torch.abs(gaussians.means[:,2]-object_center[2])>radius[2]*ratio[2], True, False).flatten()
     prune_mask=torch.logical_or(torch.logical_or(prune_mask1,prune_mask2),prune_mask3)
     gaussians.prune_points(prune_mask)
     print(f"prune number: {torch.sum(prune_mask).item()}")
@@ -173,15 +146,11 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--out_path", default="./output", type=str,
-        help="Path to the directory where output should be saved to."
-    )
-    parser.add_argument(
-        "--data_path", default="data/random_nt.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/frontback_bunny.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
-        "--gaussians_per_splat", default=-1, type=int,
+        "--gaussians_per_splat", default=4096, type=int,
         help=(
             "Number of gaussians to splat in one function call. If set to -1, "
             "then all gaussians in the scene are splat in a single function call. "
@@ -195,10 +164,6 @@ def get_args():
     parser.add_argument(
         "--num_itrs", default=501, type=int,
         help="Number of iterations to train the model."
-    )
-    parser.add_argument(
-        "--viz_freq", default=20, type=int,
-        help="Frequency with which visualization should be performed."
     )
     parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()

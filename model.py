@@ -36,7 +36,7 @@ class GaussianModel(nn.Module):
         self.colours=nn.Parameter(0.01*torch.ones((self.num_points,1), dtype=torch.float32))
         self.coefficients = nn.Parameter(0.0 * torch.ones((self.num_points,1), dtype=torch.float32))
         self.opacities = nn.Parameter(0.1 * torch.ones((self.num_points,self.view_num), dtype=torch.float32))
-        self.pre_act_scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.coefficients)*scale))
+        self.scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.coefficients)*scale))
 
         # Used by both confocal and nonconfocal
         self.bin_resolution=bin_resolution
@@ -50,7 +50,7 @@ class GaussianModel(nn.Module):
         self.cameraOrigin=cameraOrigin
 
     def parameters(self):
-        return [self.pre_act_scales, self.colours, self.coefficients,self.opacities]
+        return [self.scales, self.colours, self.coefficients,self.opacities]
     
     def get_all_parameters(self):
         return {
@@ -65,7 +65,7 @@ class GaussianModel(nn.Module):
     
     @property
     def get_scaling(self):
-        return self.scaling_activation(self.pre_act_scales)
+        return self.scaling_activation(self.scales)
     @property
     def get_coefficient(self):
         return self.opacity_activation(self.coefficients)

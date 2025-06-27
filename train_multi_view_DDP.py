@@ -82,18 +82,18 @@ def train(rank, args):
             {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
             {'params': [model.coefficients], 'lr': 0.02, "name": "coefficient"},
             {'params': [model.opacities], 'lr': 0.02, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.002, "name": "scaling"}
+            {'params': [model.scales], 'lr': 0.002, "name": "scaling"}
         ]
     else:
         l = [
                 {'params': [model.colours], 'lr': 0.001, "name": "colours"},
                 {'params': [model.coefficients], 'lr': 0.01, "name": "coefficients"},
                 {'params': [model.opacities], 'lr': 0.01, "name": "opacity"},
-                {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+                {'params': [model.scales], 'lr': 0.001, "name": "scaling"}
             ]
     
     optimizer = torch.optim.Adam(l)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=250, gamma=0.8)
+    
     
     for itr in range(1,num_itrs):
         loss=0

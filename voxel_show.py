@@ -75,8 +75,8 @@ def create_renders(args):
 
     gaussians.means = torch.from_numpy(xyz).to(args.device).float()
     gaussians.colours=torch.from_numpy(rho/1000).to(args.device).float()
-    gaussians.pre_act_scales = torch.log(torch.ones((xyz.shape[0],1),dtype=torch.float32,device=args.device)*steps[0])
-    gaussians.pre_act_opacities = 0.0 * torch.ones((xyz.shape[0],), dtype=torch.float32,device=args.device)
+    gaussians.scales = torch.log(torch.ones((xyz.shape[0],1),dtype=torch.float32,device=args.device)*steps[0])
+    gaussians.opacities = 0.0 * torch.ones((xyz.shape[0],), dtype=torch.float32,device=args.device)
     _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
     gaussians.radius=torch.max(_range/2.0).to(args.device)
 

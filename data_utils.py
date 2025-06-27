@@ -272,18 +272,19 @@ def visualize_renders(scene, gt_viz_img, cameras, img_size):
     viz_frame = np.concatenate((pred_viz_img, gt_viz_img), axis=0)
     return viz_frame
 
-def construct_list_of_attributes(colours,scaling,rotation,features_rest):
+def construct_list_of_attributes(colours,scaling,rotation,features_rest,opacity):
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
         # All channels except the 3 DC
         for i in range(colours.shape[1]):
             l.append('f_dc_{}'.format(i))
         for i in range(features_rest.shape[1]):
             l.append('f_rest_{}'.format(i))
-        l.append('opacity')
         for i in range(scaling.shape[1]):
             l.append('scale_{}'.format(i))
         for i in range(rotation.shape[1]):
             l.append('rot_{}'.format(i))
+        for i in range(opacity.shape[1]):
+            l.append('opacity_{}'.format(i))
         return l
 
 def save_ply(path,gaussian):
@@ -304,11 +305,11 @@ def save_ply(path,gaussian):
     else:
         f_dc = gaussian.colours.detach().contiguous().repeat(1,3).cpu().numpy()
     f_rest = np.zeros((f_dc.shape[0],f_rest_dim)) # 球谐分量, [N,f_rest_dim]
-    opacities = gaussian.pre_act_opacities.detach().cpu().unsqueeze(1).numpy() # [N,1]
-    scale = gaussian.pre_act_scales.detach().cpu().numpy() # [N,1]
+    opacities = gaussian.opacities.detach().cpu().numpy() # [N,view_num]
+    scale = gaussian.scales.detach().cpu().numpy() # [N,1]
     rotation = np.zeros((N,4)) # [N,4]
     rotation[:,3]=1.0
-    dtype_full = [(attribute, 'f4') for attribute in construct_list_of_attributes(f_dc,scale,rotation,f_rest)]
+    dtype_full = [(attribute, 'f4') for attribute in construct_list_of_attributes(f_dc,scale,rotation,f_rest,opacities)]
 
     elements = np.empty(xyz.shape[0], dtype=dtype_full)
     attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
@@ -323,7 +324,6 @@ def load_gaussians_from_ply(path):
     xyz = np.stack((np.asarray(plydata.elements[0]["x"]),
                     np.asarray(plydata.elements[0]["y"]),
                     np.asarray(plydata.elements[0]["z"])),  axis=1)
-    opacities = np.asarray(plydata.elements[0]["opacity"])[..., np.newaxis]
 
     features_dc = np.zeros((xyz.shape[0], 3, 1))
     features_dc[:, 0, 0] = np.asarray(plydata.elements[0]["f_dc_0"])
@@ -351,6 +351,12 @@ def load_gaussians_from_ply(path):
     rots = np.zeros((xyz.shape[0], len(rot_names)))
     for idx, attr_name in enumerate(rot_names):
         rots[:, idx] = np.asarray(plydata.elements[0][attr_name])
+    
+    opacity_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("opacity_")]
+    opacity_names = sorted(opacity_names, key = lambda x: int(x.split('_')[-1]))
+    opacities = np.zeros((xyz.shape[0], len(opacity_names)))
+    for idx, attr_name in enumerate(opacity_names):
+        opacities[:, idx] = np.asarray(plydata.elements[0][attr_name])
 
     xyz = xyz.astype(np.float32)
     rots = rots.astype(np.float32)

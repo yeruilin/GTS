@@ -37,8 +37,8 @@ class GaussianModel(nn.Module):
 
         # Initial parameters
         self.colours=nn.Parameter(0.1*torch.ones((self.num_points,1), dtype=torch.float32))
-        self.pre_act_opacities = nn.Parameter(8.0 * torch.ones((self.num_points,1), dtype=torch.float32))
-        self.pre_act_scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.pre_act_opacities)*scale))
+        self.opacities = nn.Parameter(8.0 * torch.ones((self.num_points,1), dtype=torch.float32))
+        self.scales = nn.Parameter(self.scaling_inverse_activation(torch.ones_like(self.opacities)*scale))
 
         # Used by both confocal and nonconfocal
         self.bin_resolution=bin_resolution
@@ -52,13 +52,13 @@ class GaussianModel(nn.Module):
         self.cameraOrigin=cameraOrigin
 
     def parameters(self):
-        return [self.pre_act_scales, self.colours, self.pre_act_opacities]
+        return [self.scales, self.colours, self.opacities]
     
     def get_all_parameters(self):
         return {
-            'scale': self.pre_act_scales.detach(),
+            'scale': self.scales.detach(),
             'rho': self.colours.detach(),
-            'o': self.pre_act_opacities.detach()
+            'o': self.opacities.detach()
         }
     
     def __len__(self):
@@ -66,10 +66,10 @@ class GaussianModel(nn.Module):
     
     @property
     def get_scaling(self):
-        return self.scaling_activation(self.pre_act_scales)
+        return self.scaling_activation(self.scales)
     @property
     def get_opacity(self):
-        return self.opacity_activation(self.pre_act_opacities)
+        return self.opacity_activation(self.opacities)
     @property
     def get_colour(self):
         return self.colours**2
@@ -111,7 +111,7 @@ class GaussianModel(nn.Module):
         intensity=self.get_colour.flatten() # (N,)
 
         # 计算两组基的系数
-        coeff=self.pre_act_opacities.flatten().unsqueeze(1) # (N,1)
+        coeff=self.opacities.flatten().unsqueeze(1) # (N,1)
 
         # 计算激光点和相机点到两边的距离
         r0_=torch.norm(self.cameraPos-self.cameraOrigin, p=2, dim=1)
@@ -225,8 +225,8 @@ def train(args):
     # 优化器
     l = [
             {'params': [model.colours], 'lr': 0.0025, "name": "colours"},
-            {'params': [model.pre_act_opacities], 'lr': 0.025, "name": "opacity"},
-            {'params': [model.pre_act_scales], 'lr': 0.001, "name": "scaling"}
+            {'params': [model.opacities], 'lr': 0.025, "name": "opacity"},
+            {'params': [model.scales], 'lr': 0.001, "name": "scaling"}
         ]
     optimizer = torch.optim.Adam(l)
 
