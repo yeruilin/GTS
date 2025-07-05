@@ -100,6 +100,9 @@ def run_training(args):
                 fov=fov,degrees=False, # radian
                 R=R, T=T
             ).to(device)
+
+            ## 采样点越多，体渲染的结果就越接近于非体渲染的结果，因为非体渲染前向模型直接在公式中进行了积分，是最准的
+            ## 采样点少的时候，重建结果缺少一些细节，但恰好可以弥补那些看不到的空洞！！
             img_size=(64,64)
             gaussians_per_splat=-1
             current_camera.image_size=(img_size,)
