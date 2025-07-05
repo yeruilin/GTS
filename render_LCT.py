@@ -40,7 +40,7 @@ def create_renders(args):
     print("colour median:",torch.median(gaussians.get_colour))
 
     # mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>=1e-2).squeeze()
+    mask=(gaussians.get_colour[:,0]>1e-3).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
     # gaussians.opacities=gaussians.coefficients[mask]

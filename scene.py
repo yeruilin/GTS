@@ -466,12 +466,33 @@ class Scene:
         intensity=colours[:,:,None]*alphas*transmittance  # (N,H, W)
         intensity = torch.sum(intensity.view(N, -1), dim=1)  # (N,)
 
-        ## NLOS rendering
-        hist_inten=intensity/(z_vals**decay) # 形状是[select_num]
-        indices=(z_vals*2/bin_resolution).long() # 计算索引
-        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+        # ## NLOS rendering
+        # hist_inten=intensity/(z_vals**decay) # 形状是[select_num]
+        # indices=(z_vals*2/bin_resolution).long() # 计算索引
+        # indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
 
-        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
-        hist.scatter_add_(0, indices, hist_inten.flatten())
+        # hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
+        # hist.scatter_add_(0, indices, hist_inten.flatten())
+
+        # ## NLOS rendering
+        r_=t0/2+bin_resolution/2*torch.arange(1,1+num_bins,dtype=torch.float32).to(self.device).flatten() # (M,)
+        r=r_.view(1,num_bins) #(1,M)
+
+        sigma=torch.mean(scales,dim=1).unsqueeze(1) # (N,1)
+        sigma=torch.clip(sigma,bin_resolution/2) #一定要不小于分辨率才能保证数值稳定
+
+        # 概率密度,[N,M]
+        r0=z_vals.unsqueeze(1)
+        # pdf=math.sqrt(0.5/math.pi) * (r/(r0*sigma))*torch.exp(-0.5*((r-r0)/sigma)**2) # 完整的径向分布
+        pdf=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma # 高斯分布
+        # pdf=(r-r0)*torch.exp(-0.5*((r-r0)/sigma)**2)/(sigma**2) # 瑞利分布
+        pr=pdf*bin_resolution/2 # 概率, [N,M]
+        pr=torch.clip(pr,0,1)
+
+        # print(torch.mean(torch.sum(pr,1)))
+
+        hist=intensity.unsqueeze(1)*pr # (N,M)
+        hist=torch.sum(hist,dim=0).flatten()
+        hist=hist/torch.pow(r_,decay)
 
         return hist
