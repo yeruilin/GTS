@@ -314,6 +314,10 @@ class MultiViewDataset(Dataset):
             # 对应扫描面
             self.view_id=data_dict["view_id"] # [N,1], int
 
+            self.data=self.data[:128*128*2,:]
+            self.grid=self.grid[:128*128*2,:]
+            self.view_id=self.view_id[:128*128*2,:]
+
             # 索引0对应的时间
             if "t0" in data_dict.keys():
                 self.t0=torch.from_numpy(data_dict["t0"]).item() # 浮点数

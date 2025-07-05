@@ -19,7 +19,7 @@ def run_training(args):
     
     confocal=True
     decay=4
-    scale=0.002
+    scale=0.1
     num_itrs=501
     train_fast=False
     ratio=[0.85,0.85,0.85]
@@ -27,7 +27,7 @@ def run_training(args):
     min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
     max_pos=[0.3,0.3,0.3]
     grid_size=[0.003,0.003,0.005]
-    view_num=4
+    view_num=2
 
     # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.3]
@@ -63,7 +63,7 @@ def run_training(args):
     train_itr = iter(train_loader)
     
     ### 开始训练
-    gaussians.training_setup(train_fast=train_fast)
+    gaussians.training_setup(train_fast=True)
 
     loss_list=[]
 
@@ -99,12 +99,12 @@ def run_training(args):
             if itr%50==0:
                 # scipy.io.savemat(f"temp/hist{itr}.mat",{"hist":,"gt_hist":gt_hist.detach().cpu().numpy()})
                 # 防止出现太大的片元
-                select_mask=torch.where(gaussians.get_scaling[:,0]>0.008, True, False).flatten()
+                select_mask=torch.where(gaussians.get_scaling[:,0]>scale*1.5, True, False).flatten()
                 gaussians.density_and_split1(select_mask,copy_num=1)
                 print(f"split number: {torch.sum(select_mask).item()}")
 
                 # 直接删除太大的片元
-                prune_mask=torch.where(gaussians.get_scaling[:,0]>0.01, True, False).flatten()
+                prune_mask=torch.where(gaussians.get_scaling[:,0]>scale*2, True, False).flatten()
                 gaussians.prune_points(prune_mask)
                 print(f"prune number: {torch.sum(prune_mask).item()}")
 
