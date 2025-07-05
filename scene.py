@@ -42,16 +42,24 @@ class Scene:
 
         return cov_3D
 
-    def _compute_jacobian(self, means_3D: torch.Tensor, camera: PerspectiveCameras, img_size: Tuple):
+    def _compute_jacobian(self, means_3D: torch.Tensor, camera, img_size: Tuple):
 
-        if camera.in_ndc():
-            raise RuntimeError
+        if type(camera)==PerspectiveCameras:
+            if camera.in_ndc():
+                raise RuntimeError
+            
+            fx, fy = camera.focal_length.flatten()
+            W, H = img_size
 
-        fx, fy = camera.focal_length.flatten()
-        W, H = img_size
-
-        half_tan_fov_x = 0.5 * W / fx
-        half_tan_fov_y = 0.5 * H / fy
+            half_tan_fov_x = 0.5 * W / fx
+            half_tan_fov_y = 0.5 * H / fy
+        
+        else: # FoVCamera
+            W, H = img_size
+            half_tan_fov_x=torch.tan(camera.fov)/2
+            half_tan_fov_y=torch.tan(camera.fov)/2
+            fx=W/torch.tan(camera.fov)
+            fy=H/torch.tan(camera.fov)
 
         view_transform = camera.get_world_to_view_transform()
         means_view_space = view_transform.transform_points(means_3D)
@@ -426,3 +434,44 @@ class Scene:
         image = mask * image + (1.0 - mask) * bg_colour_
 
         return image, depth, mask
+    
+    def render_conf_hist(self,camera,bin_resolution,num_bins,t0=0,decay=4,gaussians_per_splat=-1,img_size=64):
+        # Globally sort gaussians according to their depth value
+        z_vals_origin = self.compute_depth_values(camera) # (N,)
+        idxs = self.get_idxs_to_filter_and_sort(z_vals_origin)
+
+        scales = self.gaussians.get_scaling[idxs] # [N,1]
+        opacities = self.gaussians.get_opacity[idxs].view(-1) # [N,]
+        quats= torch.zeros([scales.shape[0],4],dtype=scales.dtype,device=scales.device)
+        z_vals = z_vals_origin[idxs] # [N,1]
+        means_3D = self.gaussians.means[idxs] # [N,3]
+
+        colours = self.gaussians.get_colour[idxs] # [N,1]
+
+        ## Volume rendering histogram
+        N=means_3D.shape[0]
+        if z_vals.shape[0]!=N:
+            raise RuntimeError
+        # Step 1: Compute 2D gaussian parameters
+        means_2D = self.compute_means_2D(means_3D,camera)  # (N, 2)
+        cov_2D = self.compute_cov_2D(means_3D,quats,scales,camera,img_size)  # (N, 2, 2)
+
+        # Step 2: Compute alpha maps for each gaussian
+        alphas = self.compute_alphas(opacities,means_2D,cov_2D,img_size)  # (N, H, W)
+
+        # Step 3: Compute transmittance maps for each gaussian
+        transmittance = self.compute_transmittance(alphas)  # (N, H, W)
+
+        # integrate on phi and theta
+        intensity=colours[:,:,None]*alphas*transmittance  # (N,H, W)
+        intensity = torch.sum(intensity.view(N, -1), dim=1)  # (N,)
+
+        ## NLOS rendering
+        hist_inten=intensity/(z_vals**decay) # 形状是[select_num]
+        indices=(z_vals*2/bin_resolution).long() # 计算索引
+        indices = torch.clamp(indices, 0, num_bins - 1).flatten()  # 防止索引超出范围
+
+        hist=torch.zeros((num_bins,),dtype=torch.float32,device=camera.device) # 这里不要写require梯度，因为这个内存要在scatter_add_的时候被占掉
+        hist.scatter_add_(0, indices, hist_inten.flatten())
+
+        return hist

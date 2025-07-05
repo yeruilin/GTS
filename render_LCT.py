@@ -39,11 +39,12 @@ def create_renders(args):
     print("colour mean:",torch.mean(gaussians.get_colour))
     print("colour median:",torch.median(gaussians.get_colour))
 
-    mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
-    mask=(gaussians.get_colour[:,0]>=1e-3).squeeze()
+    # mask=(gaussians.get_colour[:,0]>torch.min(torch.mean(gaussians.get_colour),torch.median(gaussians.get_colour))).squeeze()
+    mask=(gaussians.get_colour[:,0]>=1e-2).squeeze()
 
     gaussians.colours=gaussians.colours[mask]
-    gaussians.opacities=gaussians.coefficients[mask]
+    # gaussians.opacities=gaussians.coefficients[mask]
+    gaussians.opacities=gaussians.opacities[mask].unsqueeze(1)
     
     gaussians.scales=gaussians.scales[mask]
     # print("scaling:",torch.max(gaussians.get_scaling))
