@@ -12,6 +12,8 @@ import argparse
 from dataset import *
 from data_utils import plot_hist
 
+from pytorch3d.renderer.cameras import FoVPerspectiveCameras, look_at_view_transform
+
 import warnings
 warnings.filterwarnings("ignore", category=ResourceWarning)
 
@@ -37,17 +39,17 @@ def train(rank, args):
     # grid_size=[0.003,0.003,0.005]
     # view_num=4
 
-    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
-    # max_pos=[0.15,0.3,0.3]
-    # grid_size=[0.0024,0.0024,0.005]
-    # view_num=4
-    # num_itrs=2001
+    min_pos=[-0.15,-0.3,-0.2] ## frontback_lion数据参数
+    max_pos=[0.15,0.3,0.2]
+    grid_size=[0.005,0.005,0.005]
+    view_num=1
+    num_itrs=101
 
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
-    max_pos=[0.3,0.3,0.3]
-    grid_size=[0.003,0.003,0.01]
-    view_num=3
-    train_fast=False
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # grid_size=[0.003,0.003,0.01]
+    # view_num=3
+    # train_fast=False
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -69,9 +71,12 @@ def train(rank, args):
     xyz,pixels=makegrid(min_pos,max_pos,grid_size,rank,args.world_size)
     xyz=torch.from_numpy(xyz).float().to(rank)
     print(xyz.shape)
+
+    object_center=np.array(max_pos)/2+np.array(min_pos)/2
+    radius=np.array(max_pos)/2-np.array(min_pos)/2
     
     # 创建模型并移动到当前GPU
-    model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal,view_num=view_num).to(rank)
+    model = GaussianModel(xyz.shape[0],scale,bin_resolution,num_bins,dataset.t0,decay,confocal,volume_render=True).to(rank)
 
     ddp_model = DDP(model, device_ids=[rank])
     
@@ -108,11 +113,22 @@ def train(rank, args):
 
             laserPos=data["point"].to(rank)
             gt_hist=data["hist"].reshape(-1).to(rank)
-            view_id=data["view_id"]
-            
-            optimizer.zero_grad()
+            scan_point=data["point"].flatten().cpu().numpy().tolist()
 
-            hist = ddp_model(xyz,laserPos,view_id)
+            # define the camera
+            distance=np.sqrt((scan_point[0]-object_center[0])**2+(scan_point[1]-object_center[1])**2+(scan_point[2]-object_center[2])**2) # 扫描点到场景中心的距离
+            fov_radius=np.sqrt(radius[0]**2+radius[1]**2+radius[2]**2) # 场景半径
+            fov=float(2*np.asin(fov_radius/distance))
+            R, T = look_at_view_transform(eye=(scan_point,),at=(object_center.tolist(),),up=((0, 1, 0),)) # 因为高斯元中心在原点，因此at就是原点
+            current_camera = FoVPerspectiveCameras(
+                znear=0.1,zfar=10.0,
+                fov=fov,degrees=False, # radian
+                R=R, T=T
+            ).to(gt_hist.device)
+            img_size=(64,64)
+            current_camera.image_size=(img_size,)
+
+            hist = ddp_model(xyz,laserPos,camera=current_camera)
 
             # 每个结点计算损失，DDP会自动将梯度all-reduce，实际上每个GPU分别进行了拟合
             loss += torch.mean((hist-gt_hist).abs())
@@ -121,6 +137,7 @@ def train(rank, args):
         loss.backward()
         optimizer.step()
         scheduler.step()
+        optimizer.zero_grad()
 
         if rank == 0:
             print(f"[*] Itr: {itr:07d} | Loss: {loss:0.3f} |")
@@ -129,7 +146,7 @@ def train(rank, args):
                 if itr%50==0:  
                     plot_hist(hist,gt_hist,itr)
                 
-                if itr%500==0:
+                if itr%100==0:
                     local_params = model.get_all_parameters()
                     rho =local_params["rho"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2]).cpu().numpy()
                     o = local_params["o"].detach().view(pixels[0]//2,pixels[1]//2,pixels[2],view_num).cpu().numpy()
@@ -156,7 +173,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_cylinder.mat", type=str,
+        "--data_path", default="data/frontback_lion.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

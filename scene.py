@@ -215,7 +215,7 @@ class Scene:
         points_2D = points_2D.unsqueeze(0)  # (1, H*W, 2)
         means_2D = means_2D.unsqueeze(1)  # (N, 1, 2)
 
-        cov_2D_inverse = self.invert_cov_2D(cov_2D)  # (N, 2, 2) TODO: Verify shape
+        cov_2D_inverse = self.invert_cov_2D(cov_2D)  # (N, 2, 2) 
 
         power = self.evaluate_gaussian_2D(points_2D,means_2D,cov_2D_inverse)  # (N, H*W)
 
@@ -435,7 +435,7 @@ class Scene:
 
         return image, depth, mask
     
-    def render_conf_hist(self,camera,bin_resolution,num_bins,t0=0,decay=4,gaussians_per_splat=-1,img_size=64):
+    def render_conf_hist(self,camera,bin_resolution,num_bins,t0=0,decay=4,gaussians_per_splat=-1,img_size=(64,64)):
         # Globally sort gaussians according to their depth value
         z_vals_origin = self.compute_depth_values(camera) # (N,)
         idxs = self.get_idxs_to_filter_and_sort(z_vals_origin)

@@ -31,16 +31,16 @@ def create_renders(args):
         os.makedirs(debug_root, exist_ok=True)
 
     # load voxel
-    mat_path="temp/result_bunny_netf.mat" # bunny_result
+    mat_path="temp/result100.mat" # bunny_result
     mat_data = scipy.io.loadmat(mat_path)
-    rho = mat_data['density'] # mat_data['rho']
+    rho = mat_data['rho'] # mat_data['rho']
     rho=rho/np.max(rho)
 
-    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
-    # max_pos=[0.15,0.3,0.3]
+    min_pos=[-0.15,-0.3,-0.2] ## frontback_lion数据参数
+    max_pos=[0.15,0.3,0.2]
 
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    max_pos=[0.3,0.3,0.3]
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.3,0.3,0.3]
 
     lower_corner = np.array(min_pos, dtype=float)
     upper_corner = np.array(max_pos, dtype=float)
@@ -49,13 +49,13 @@ def create_renders(args):
     steps = (upper_corner - lower_corner) / (grid_size - 1) # 计算每个维度的步长
     
     # 获取大于阈值的坐标和值
-    thresh=0.1
+    thresh=0.2
     x_idx, y_idx, z_idx = np.where(rho > thresh)
     values = rho[x_idx, y_idx, z_idx]
     
     # 构建4维向量 [x,y,z,value]
-    # result = np.column_stack((x_idx, y_idx, z_idx,values)) # lion
-    result = np.column_stack((y_idx, x_idx, z_idx, values)) # netf
+    result = np.column_stack((x_idx, y_idx, z_idx,values)) # lion
+    # result = np.column_stack((y_idx, x_idx, z_idx, values)) # netf
     # result = np.column_stack((x_idx, z_idx, y_idx, values)) # bunny
     
     # 转换为4维数组 (N,4)

@@ -15,7 +15,7 @@ def inverse_sigmoid(x):
 
 class GaussianModel(nn.Module):
     def __init__(self, num_points, scale,
-                 bin_resolution=0.01,num_bins=512,t0=0,decay=2.0,confocal=True,
+                 bin_resolution=0.01,num_bins=512,t0=0,decay=2.0,confocal=True,volume_render=False,
                  laserOrigin=None,cameraPos=[0,0,0],cameraOrigin=[0,0,0], # nonconfocal
                  view_num=1
                  ):
@@ -24,6 +24,7 @@ class GaussianModel(nn.Module):
         self.confocal=confocal
         self.num_points=num_points
         self.view_num=view_num
+        self.volume_render=volume_render
 
         # activation function
         self.scaling_activation = torch.exp
@@ -75,6 +76,150 @@ class GaussianModel(nn.Module):
     @property
     def get_colour(self):
         return self.colours**2
+
+    def _compute_jacobian(self, means_3D: torch.Tensor, camera, img_size:tuple):
+
+        # FoVCamera
+        W, H = img_size
+        half_tan_fov_x=torch.tan(camera.fov)/2
+        half_tan_fov_y=torch.tan(camera.fov)/2
+        fx=W/torch.tan(camera.fov)
+        fy=H/torch.tan(camera.fov)
+
+        view_transform = camera.get_world_to_view_transform()
+        means_view_space = view_transform.transform_points(means_3D)
+
+        tx = means_view_space[:, 0]
+        ty = means_view_space[:, 1]
+        tz = means_view_space[:, 2]
+        tz2 = tz*tz
+
+        lim_x = 1.3 * half_tan_fov_x
+        lim_y = 1.3 * half_tan_fov_y
+
+        tx = torch.clamp(tx/tz, -lim_x, lim_x) * tz
+        ty = torch.clamp(ty/tz, -lim_y, lim_y) * tz
+
+        J = torch.zeros((len(tx), 2, 3))  # (N, 2, 3)
+        J = J.to(means_3D.device)
+
+        J[:, 0, 0] = fx / tz
+        J[:, 1, 1] = fy / tz
+        J[:, 0, 2] = -(fx * tx) / tz2
+        J[:, 1, 2] = -(fy * ty) / tz2
+
+        return J  # (N, 2, 3)
+    
+    def compute_cov_2D(self, means_3D: torch.Tensor, scales: torch.Tensor, camera, img_size: tuple):
+
+        N=scales.shape[0]
+        J = self._compute_jacobian(means_3D,camera,img_size)  # (N, 2, 3)
+        W = camera.R.repeat((N,1,1))  # (N, 3, 3)
+
+        # calculate cov 3D
+        scales=scales*scales
+        scales=scales.repeat((1,3))
+        cov_3D=torch.diag_embed(scales) # (N, 3, 3)
+
+        J=torch.bmm(J,W)
+        cov_2D = torch.bmm(J,torch.bmm(cov_3D,J.transpose(1,2)))  # (N, 2, 2)
+
+        # Post processing to make sure that each 2D Gaussian covers atleast approximately 1 pixel
+        cov_2D[:, 0, 0] += 0.3
+        cov_2D[:, 1, 1] += 0.3
+
+        return cov_2D
+    
+    @staticmethod
+    def invert_cov_2D(cov_2D: torch.Tensor):
+        determinants = cov_2D[:, 0, 0] * cov_2D[:, 1, 1] - cov_2D[:, 1, 0] * cov_2D[:, 0, 1]
+        determinants = determinants[:, None, None]  # (N, 1, 1)
+        cov_2D_inverse = torch.zeros_like(cov_2D)  # (N, 2, 2)
+        cov_2D_inverse[:, 0, 0] = cov_2D[:, 1, 1]
+        cov_2D_inverse[:, 1, 1] = cov_2D[:, 0, 0]
+        cov_2D_inverse[:, 0, 1] = -1.0 * cov_2D[:, 0, 1]
+        cov_2D_inverse[:, 1, 0] = -1.0 * cov_2D[:, 1, 0]
+        cov_2D_inverse = (1.0 / determinants) * cov_2D_inverse
+        return cov_2D_inverse
+    
+    def compute_alphas(self, opacities, means_2D, cov_2D, img_size):
+        W, H = img_size
+
+        # point_2D contains all possible pixel locations in an image
+        xs, ys = torch.meshgrid(torch.arange(W), torch.arange(H), indexing="xy")
+        points_2D = torch.stack((xs.flatten(), ys.flatten()), dim = 1)  # (H*W, 2)
+        points_2D = points_2D.to(opacities.device).unsqueeze(0) # (1, H*W, 2)
+        means_2D = means_2D.unsqueeze(1)  # (N, 1, 2)
+
+        cov_2D_inverse = self.invert_cov_2D(cov_2D)  # (N, 2, 2) 
+
+        # evaluate_gaussian_2D
+        vec=points_2D-means_2D # (N,H*W,2)
+        vec2=torch.bmm(cov_2D_inverse,vec.transpose(1,2)).transpose(1,2) # (N,H*W,2)
+        power =-0.5*(vec[:,:,0]*vec2[:,:,0]+vec[:,:,1]*vec2[:,:,1])  # (N, H*W)
+
+        # Computing exp(power) with some post processing for numerical stability
+        exp_power = torch.where(power > 0.0, 0.0, torch.exp(power))
+        alphas = torch.reshape(opacities*exp_power, (-1, H, W))  # (N, H, W)
+
+        # Post processing for numerical stability
+        alphas = torch.minimum(alphas, torch.full_like(alphas, 0.99))
+        alphas = torch.where(alphas < 1/255.0, 0.0, alphas)
+        return alphas
+
+    # 体渲染模式
+    def render_conf_hist(self, means, scan_point, camera, img_size=(64,64)):
+        # Globally sort gaussians according to their depth value
+        z_vals_origin = torch.norm(means-scan_point, p=2, dim=1) # (N,)
+
+        # sort
+        idxs = torch.argsort(z_vals_origin)  # (M,)
+        idxs = idxs[torch.sum(z_vals_origin<=0):]
+
+        scales = self.get_scaling[idxs] # [N,1]
+        z_vals = z_vals_origin[idxs] # [N,1]
+        means_3D = means[idxs] # [N,3]
+        colours = self.get_colour[idxs] # [N,1]
+        coeff=self.get_coefficient[idxs] # [N,1]
+        opacities = self.get_opacity[idxs]+0.0*coeff # [N,1]
+
+        ## Volume rendering histogram
+        N=means_3D.shape[0]
+
+        # Step 1: Compute 2D gaussian parameters
+        means_2D = camera.transform_points_screen(means_3D)[:,:2] # (N, 2)
+        cov_2D = self.compute_cov_2D(means_3D,scales,camera,img_size)  # (N, 2, 2)
+
+        # Step 2: Compute alpha maps for each gaussian
+        alphas = self.compute_alphas(opacities,means_2D,cov_2D,img_size)  # (N, H, W)
+
+        # Step 3: Compute transmittance maps for each gaussian
+        one_minus_alphas = torch.concat((torch.ones((1, img_size[0], img_size[1]), device=alphas.device, dtype=alphas.dtype), 1.0 - alphas), dim=0)  # (N+1, H, W)
+        transmittance = torch.cumprod(one_minus_alphas,dim=0)[:-1,:,:]  # (N, H, W)
+        transmittance = torch.where(transmittance < 1e-4, 0.0, transmittance)  # (N, H, W)
+
+        # integrate on phi and theta
+        intensity=colours[:,:,None]*alphas*transmittance  # (N,H, W)
+        intensity = torch.sum(intensity.view(N, -1), dim=1)  # (N,)
+
+        # ## NLOS rendering
+        r_=self.t0/2+self.bin_resolution/2*torch.arange(1,1+self.num_bins,dtype=torch.float32).to(means.device).flatten() # (M,)
+        r=r_.view(1,self.num_bins) #(1,M)
+
+        sigma=torch.mean(scales,dim=1).unsqueeze(1) # (N,1)
+        sigma=torch.clip(sigma,self.bin_resolution/2)
+
+        # pdf,[N,M]
+        r0=z_vals.unsqueeze(1)
+        pdf=math.sqrt(0.5/math.pi)*torch.exp(-0.5*((r-r0)/sigma)**2)/sigma
+        pr=pdf*self.bin_resolution/2 # probability, [N,M]
+        pr=torch.clip(pr,0,1)
+
+        hist=intensity.unsqueeze(1)*pr # (N,M)
+        hist=torch.sum(hist,dim=0).flatten()
+        hist=hist/torch.pow(r_,self.decay)
+
+        return hist
     
     # 利用极坐标的形式计算histogram
     def render_conf_hist2(self,means, scan_point,view_id=0):
@@ -151,11 +296,15 @@ class GaussianModel(nn.Module):
 
         return hist
 
-    def forward(self,means,scan_point,view_id=0):
-        if self.confocal:
-            return self.render_conf_hist2(means,scan_point,view_id)
+    def forward(self,means,scan_point,view_id=0,camera=None):
+        if self.volume_render:
+            if self.confocal:
+                return self.render_conf_hist(means,scan_point,camera)
         else:
-            return self.render_nonconf_hist2(means,scan_point,view_id)
+            if self.confocal:
+                return self.render_conf_hist2(means,scan_point,view_id)
+            else:
+                return self.render_nonconf_hist2(means,scan_point,view_id)
 
 # def gather_all_parameters(rank, world_size, local_params,pixels):
 #     """
