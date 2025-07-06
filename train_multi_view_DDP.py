@@ -37,17 +37,18 @@ def train(rank, args):
     # grid_size=[0.003,0.003,0.005]
     # view_num=4
 
-    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
-    # max_pos=[0.15,0.3,0.3]
-    # grid_size=[0.0024,0.0024,0.005]
-    # view_num=4
-    # num_itrs=2001
-
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
-    max_pos=[0.3,0.3,0.3]
-    grid_size=[0.003,0.003,0.01]
-    view_num=3
+    min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    max_pos=[0.15,0.3,0.3]
+    grid_size=[0.005,0.002,0.01]
+    view_num=2
+    num_itrs=2001
     train_fast=False
+
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # grid_size=[0.003,0.003,0.01]
+    # view_num=3
+    # train_fast=False
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -156,7 +157,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_cylinder.mat", type=str,
+        "--data_path", default="data/frontback_lion.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

@@ -300,7 +300,6 @@ class MultiViewDataset(Dataset):
             
             self.data=data_dict["data"] # [sample_num,M]
             self.N=64
-            self.M=self.data.shape[-1]
 
             self.data=torch.from_numpy(self.data)
             self.data[:,-1]=0
@@ -314,7 +313,7 @@ class MultiViewDataset(Dataset):
             # 对应扫描面
             self.view_id=data_dict["view_id"] # [N,1], int
 
-            self.data=self.data[:128*128*2,:]
+            self.data=self.data[:128*128*2,151:350]
             self.grid=self.grid[:128*128*2,:]
             self.view_id=self.view_id[:128*128*2,:]
 
@@ -324,6 +323,9 @@ class MultiViewDataset(Dataset):
                 print(self.t0)
             else:
                 self.t0=0.0
+
+            self.t0=151*self.bin_resolution
+            self.M=self.data.shape[-1]
 
         except  Exception as e:
             print(e)
