@@ -12,7 +12,7 @@ import math
 
 SH_C0 = 0.28209479177387814
 CMAP_JET = plt.get_cmap("jet")
-CMAP_MIN_NORM, CMAP_MAX_NORM = 0.5, 4.0
+CMAP_MIN_NORM, CMAP_MAX_NORM = 1.8,2.5
 
 class OptimizationParams:
     def __init__(self):

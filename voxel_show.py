@@ -23,6 +23,7 @@ def create_renders(args):
     dim = args.img_dim
     img_size = (dim, dim)
 
+    frame_rate=5.0
     num_views = 32
     azims = np.linspace(-180, 180, num_views)
 
@@ -32,9 +33,16 @@ def create_renders(args):
 
     # load voxel
     mat_path="temp/result500.mat" # bunny_result
+    thresh=0.1
+    
     mat_data = scipy.io.loadmat(mat_path)
-    rho = mat_data['rho'] # mat_data['rho']
+    rho = mat_data['rho']
     rho=rho/np.max(rho)
+
+    if "opacity" in mat_data.keys():
+        opacity=mat_data['opacity']
+    else:
+        opacity=np.zeros(rho.shape,dtype=np.float32)
 
     # min_pos=[-0.15,-0.3,-0.2] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.2]
@@ -49,21 +57,20 @@ def create_renders(args):
     steps = (upper_corner - lower_corner) / (grid_size - 1) # 计算每个维度的步长
     
     # 获取大于阈值的坐标和值
-    thresh=0.1
     x_idx, y_idx, z_idx = np.where(rho > thresh)
-    values = rho[x_idx, y_idx, z_idx]
+    rho = rho[x_idx, y_idx, z_idx]
+    opacity=opacity[x_idx, y_idx, z_idx]
     
     # 构建4维向量 [x,y,z,value]
-    result = np.column_stack((x_idx, y_idx, z_idx,values)) # lion
-    # result = np.column_stack((y_idx, x_idx, z_idx, values)) # netf
-    # result = np.column_stack((x_idx, z_idx, y_idx, values)) # bunny
+    result = np.column_stack((x_idx, y_idx, z_idx,rho,opacity))
     
-    # 转换为4维数组 (N,4)
-    result = result.reshape(-1, 4)
+    # 转换为5维数组 (N,5)
+    result = result.reshape(-1, 5)
     print(result.shape)
 
     xyz=lower_corner + result[:,:3]*steps # 均值
-    rho=result[:,3:] # 反射率
+    rho=result[:,3:4] # 反射率
+    opacity=result[:,4:5] # 反射率
 
     # 计算xyz中心点
     gaussians = Gaussians(
@@ -75,9 +82,9 @@ def create_renders(args):
     filename=args.data_path.split("/")[-1][:-4]
 
     gaussians.means = torch.from_numpy(xyz).to(args.device).float()
-    gaussians.colours=torch.from_numpy(rho/1000).to(args.device).float()
+    gaussians.colours=torch.from_numpy(rho).to(args.device).float()
+    gaussians.opacities=torch.from_numpy(opacity).to(args.device).float()
     gaussians.scales = torch.log(torch.ones((xyz.shape[0],1),dtype=torch.float32,device=args.device)*steps[0])
-    gaussians.opacities = 0.0 * torch.ones((xyz.shape[0],), dtype=torch.float32,device=args.device)
     _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
     gaussians.radius=torch.max(_range/2.0).to(args.device)
 
@@ -142,7 +149,7 @@ def create_renders(args):
         imgs.append(np.array(resized))
 
     gif_path = os.path.join(args.out_path, f"{filename}.gif")
-    imageio.mimwrite(gif_path, imgs, duration=1000.0*(1/10.0), loop=0)
+    imageio.mimwrite(gif_path, imgs, duration=1000.0*(1/frame_rate), loop=0)
     
 
 def get_args():

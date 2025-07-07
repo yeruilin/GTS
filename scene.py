@@ -222,7 +222,7 @@ class Scene:
         # Computing exp(power) with some post processing for numerical stability
         exp_power = torch.where(power > 0.0, 0.0, torch.exp(power))
 
-        alphas = opacities.unsqueeze(1)*exp_power  # (N, H*W)
+        alphas = opacities*exp_power  # (N, H*W)
         alphas = torch.reshape(alphas, (-1, H, W))  # (N, H, W)
 
         # Post processing for numerical stability
@@ -291,7 +291,7 @@ class Scene:
                                         components of 3D Gaussians.
             colours                 :   A torch.Tensor of shape (N, 3) with the colour contribution
                                         of each Gaussian.
-            opacities               :   A torch.Tensor of shape (N,) with the opacity of each Gaussian.
+            opacities               :   A torch.Tensor of shape (N,1) with the opacity of each Gaussian.
             img_size                :   The (width, height) of the image.
             start_transmittance     :   Please see the docstring of the function compute_transmittance
                                         for information about this argument.
@@ -380,7 +380,7 @@ class Scene:
         quats = torch.zeros([colours.shape[0],4],dtype=colours.dtype,device=colours.device)
         quats[:,3]=1.0
         scales = self.gaussians.get_scaling[idxs]
-        opacities = self.gaussians.get_opacity[idxs].flatten()
+        opacities = self.gaussians.get_opacity[idxs]
         z_vals = z_vals[idxs]
         means_3D = self.gaussians.means[idxs]
 
@@ -441,7 +441,7 @@ class Scene:
         idxs = self.get_idxs_to_filter_and_sort(z_vals_origin)
 
         scales = self.gaussians.get_scaling[idxs] # [N,1]
-        opacities = self.gaussians.get_opacity[idxs].view(-1) # [N,]
+        opacities = self.gaussians.get_opacity[idxs] # [N,1]
         quats= torch.zeros([scales.shape[0],4],dtype=scales.dtype,device=scales.device)
         z_vals = z_vals_origin[idxs] # [N,1]
         means_3D = self.gaussians.means[idxs] # [N,3]
