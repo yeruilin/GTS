@@ -43,7 +43,7 @@ def create_renders(args):
         opacity=mat_data['opacity']
     else:
         opacity=np.zeros(rho.shape,dtype=np.float32)
-
+    
     # min_pos=[-0.15,-0.3,-0.2] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.2]
 
@@ -112,11 +112,14 @@ def create_renders(args):
         mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
         depth = depth.detach().cpu().numpy()
 
+        print(np.max(img),np.min(img))
+
         if use_filter:
             img = cv2.medianBlur(img, 5)
             img = gaussian_filter(img, sigma=1.0)
 
-        img=(img-np.min(img))/(np.max(img)-np.min(img))
+        # img=(img-np.min(img))/(np.max(img)-np.min(img))
+        img=np.clip(img,0.0,1.0)/0.1
         img = (img * 255.0).astype(np.uint8)
         mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 

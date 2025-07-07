@@ -370,8 +370,7 @@ class Scene:
             depth       :   A torch.Tensor of shape (H, W, 1) with the rendered depth map.
             mask        :   A torch.Tensor of shape (H, W, 1) with the rendered silhouette map.
         """
-        bg_colour_ = torch.tensor(bg_colour)[None, None, :]  # (1, 1, 3)
-        bg_colour_ = bg_colour_.to(self.device)
+        bg_colour_ = torch.tensor(bg_colour)[None, None, :].to(self.device)  # (1, 1, 3)
 
         # Globally sort gaussians according to their depth value
         z_vals = self.compute_depth_values(camera)
@@ -431,7 +430,8 @@ class Scene:
                 depth = depth + depth_
                 mask = mask + mask_
 
-        image = mask * image + (1.0 - mask) * bg_colour_
+        # image = mask * image + (1.0 - mask) * bg_colour_
+        image[(mask<0.5).expand(-1, -1, 3)]=1.0
 
         return image, depth, mask
     
