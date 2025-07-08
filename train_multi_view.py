@@ -24,10 +24,10 @@ def run_training(args):
     train_fast=False
     ratio=[0.85,0.85,0.85]
 
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    max_pos=[0.3,0.3,0.3]
-    grid_size=[0.003,0.003,0.005]
-    view_num=2
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # grid_size=[0.003,0.003,0.005]
+    # view_num=2
 
     # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.3]
@@ -40,6 +40,11 @@ def run_training(args):
     # grid_size=[0.003,0.003,0.01]
     # view_num=3
     # train_fast=False
+
+    min_pos=[-0.3,-0.3,-0.15] ## frontback_christ数据参数
+    max_pos=[0.3,0.3,0.15]
+    grid_size=[0.005,0.005,0.005]
+    view_num=2
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -146,7 +151,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_bunny.mat", type=str,
+        "--data_path", default="data/frontback_christ.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

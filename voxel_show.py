@@ -40,12 +40,12 @@ def create_renders(args):
     rho=rho/np.max(rho)
 
     if "opacity" in mat_data.keys():
-        opacity=mat_data['opacity']
+        opacity=mat_data['opacity'][:,:,:,0]
     else:
         opacity=np.zeros(rho.shape,dtype=np.float32)
     
-    # min_pos=[-0.15,-0.3,-0.2] ## frontback_lion数据参数
-    # max_pos=[0.15,0.3,0.2]
+    # min_pos=[-0.3,-0.3,-0.15] ## frontback_christ数据参数
+    # max_pos=[0.3,0.3,0.15]
 
     min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
     max_pos=[0.3,0.3,0.3]
