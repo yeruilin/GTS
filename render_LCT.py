@@ -91,6 +91,9 @@ def create_renders(args):
             # Rendering scene using gaussian splatting
             img, depth, mask= scene.render(camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
 
+        img=(img-torch.min(img))/(torch.max(img)-torch.min(img))
+        img[(mask<0.5).expand(-1, -1, 3)]=1.0
+
         debug_path = os.path.join(debug_root, f"{i:03d}.png")
         img = img.detach().cpu().numpy()
         mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
@@ -100,7 +103,6 @@ def create_renders(args):
             img = cv2.medianBlur(img, 5)
             img = gaussian_filter(img, sigma=1.0)
 
-        img=(img-np.min(img))/(np.max(img)-np.min(img))
         img = (img * 255.0).astype(np.uint8)
         mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 
@@ -166,7 +168,7 @@ def get_args():
             "memory consumption."
         )
     )
-    parser.add_argument("--device", default="cuda:0", type=str)
+    parser.add_argument("--device", default="cuda:1", type=str)
     args = parser.parse_args()
     return args
 

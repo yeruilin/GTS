@@ -32,7 +32,7 @@ def create_renders(args):
         os.makedirs(debug_root, exist_ok=True)
 
     # load voxel
-    mat_path="temp/result500.mat" # bunny_result
+    mat_path=args.data_path # bunny_result
     thresh=0.1
     
     mat_data = scipy.io.loadmat(mat_path)
@@ -55,22 +55,28 @@ def create_renders(args):
     
     grid_size = np.array(rho.shape, dtype=float)
     steps = (upper_corner - lower_corner) / (grid_size - 1) # 计算每个维度的步长
+
+    if "scale" in mat_data.keys():
+        # scale=np.log(mat_data['scale'])
+        scale=np.log(np.ones(rho.shape,dtype=np.float32)*steps[0])
+    else:
+        scale=np.log(np.ones(rho.shape,dtype=np.float32)*steps[0])
     
     # 获取大于阈值的坐标和值
     x_idx, y_idx, z_idx = np.where(rho > thresh)
     rho = rho[x_idx, y_idx, z_idx]
     opacity=opacity[x_idx, y_idx, z_idx]
+    scale=scale[x_idx, y_idx, z_idx]
     
     # 构建4维向量 [x,y,z,value]
-    result = np.column_stack((x_idx, y_idx, z_idx,rho,opacity))
-    
-    # 转换为5维数组 (N,5)
-    result = result.reshape(-1, 5)
+    result = np.column_stack((x_idx, y_idx, z_idx,rho,opacity,scale))
+    result = result.reshape(-1, 6)
     print(result.shape)
 
     xyz=lower_corner + result[:,:3]*steps # 均值
     rho=result[:,3:4] # 反射率
-    opacity=result[:,4:5] # 反射率
+    opacity=result[:,4:5] # 透明度
+    scale=result[:,5:6] # 大小
 
     # 计算xyz中心点
     gaussians = Gaussians(
@@ -84,7 +90,8 @@ def create_renders(args):
     gaussians.means = torch.from_numpy(xyz).to(args.device).float()
     gaussians.colours=torch.from_numpy(rho).to(args.device).float()
     gaussians.opacities=torch.from_numpy(opacity).to(args.device).float()
-    gaussians.scales = torch.log(torch.ones((xyz.shape[0],1),dtype=torch.float32,device=args.device)*steps[0])
+    gaussians.scales=torch.from_numpy(scale).to(args.device).float()
+
     _range=torch.max(gaussians.means,dim=0)[0]-torch.min(gaussians.means,dim=0)[0]
     gaussians.radius=torch.max(_range/2.0).to(args.device)
 
@@ -107,19 +114,18 @@ def create_renders(args):
             # Rendering scene using gaussian splatting
             img, depth, mask= scene.render(camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
 
+        img=(img-torch.min(img))/(torch.max(img)-torch.min(img))
+        img[(mask<0.5).expand(-1, -1, 3)]=1.0
+
         debug_path = os.path.join(debug_root, f"{i:03d}.png")
         img = img.detach().cpu().numpy()
         mask = mask.repeat(1, 1, 3).detach().cpu().numpy()
         depth = depth.detach().cpu().numpy()
 
-        print(np.max(img),np.min(img))
-
         if use_filter:
             img = cv2.medianBlur(img, 5)
             img = gaussian_filter(img, sigma=1.0)
 
-        # img=(img-np.min(img))/(np.max(img)-np.min(img))
-        img=np.clip(img,0.0,1.0)/0.1
         img = (img * 255.0).astype(np.uint8)
         mask = np.where(mask > 0.5, 255.0, 0.0).astype(np.uint8)  # (H, W, 3)
 
@@ -163,7 +169,7 @@ def get_args():
         help="Path to the directory where output should be saved to."
     )
     parser.add_argument(
-        "--data_path", default="./temp/result.ply", type=str,
+        "--data_path", default="./temp/result500.mat", type=str,
         help="Path to the pre-trained gaussian data to be rendered."
     )
     parser.add_argument(
@@ -185,7 +191,7 @@ def get_args():
             "memory consumption."
         )
     )
-    parser.add_argument("--device", default="cuda:0", type=str)
+    parser.add_argument("--device", default="cuda:1", type=str)
     args = parser.parse_args()
     return args
 

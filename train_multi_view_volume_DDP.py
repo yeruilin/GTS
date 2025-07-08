@@ -170,7 +170,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_bunny.mat", type=str,
+        "--data_path", default="data/frontback_girl.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

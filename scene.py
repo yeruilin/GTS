@@ -431,7 +431,8 @@ class Scene:
                 mask = mask + mask_
 
         # image = mask * image + (1.0 - mask) * bg_colour_
-        image[(mask<0.5).expand(-1, -1, 3)]=1.0
+        if image.shape[-1]==1:
+            image=image.repeat(1,1,3)
 
         return image, depth, mask
     

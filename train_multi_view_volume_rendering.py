@@ -33,15 +33,15 @@ def run_training(args):
     train_fast=False
     ratio=[0.85,0.85,0.85]
 
-    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    # max_pos=[0.3,0.3,0.3]
-    # grid_size=[0.003,0.003,0.005]
-    # view_num=1
-
-    min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
-    max_pos=[0.15,0.3,0.3]
-    grid_size=[0.0024,0.0024,0.005]
+    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    max_pos=[0.3,0.3,0.3]
+    grid_size=[0.003,0.003,0.005]
     view_num=1
+
+    # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
+    # max_pos=[0.15,0.3,0.3]
+    # grid_size=[0.0024,0.0024,0.005]
+    # view_num=1
 
     # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
     # max_pos=[0.3,0.3,0.3]
@@ -170,7 +170,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_lion.mat", type=str,
+        "--data_path", default="data/frontback_hydrant.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
