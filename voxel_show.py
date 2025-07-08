@@ -33,28 +33,31 @@ def create_renders(args):
 
     # load voxel
     mat_path=args.data_path # bunny_result
-    thresh=0.1
+    thresh=0.075
     
     mat_data = scipy.io.loadmat(mat_path)
     rho = mat_data['rho']
     rho=rho/np.max(rho)
 
     if "opacity" in mat_data.keys():
-        opacity=mat_data['opacity'][:,:,:,0]
+        opacity=mat_data['opacity']
     else:
         opacity=np.zeros(rho.shape,dtype=np.float32)
     
     # min_pos=[-0.3,-0.3,-0.15] ## frontback_christ数据参数
     # max_pos=[0.3,0.3,0.15]
 
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    max_pos=[0.3,0.3,0.3]
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.3,0.3,0.3]
+
+    min_pos=[-0.2,-0.3,-0.2] ## frontback_hydrant数据参数
+    max_pos=[0.2,0.3,0.2]
 
     lower_corner = np.array(min_pos, dtype=float)
     upper_corner = np.array(max_pos, dtype=float)
     
-    grid_size = np.array(rho.shape, dtype=float)
-    steps = (upper_corner - lower_corner) / (grid_size - 1) # 计算每个维度的步长
+    grid_shape = np.array(rho.shape, dtype=float)
+    steps = (upper_corner - lower_corner) / (grid_shape - 1) # 计算每个维度的步长
 
     if "scale" in mat_data.keys():
         # scale=np.log(mat_data['scale'])

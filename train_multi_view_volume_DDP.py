@@ -43,8 +43,12 @@ def train(rank, args):
     # max_pos=[0.15,0.3,0.18]
     # grid_size=[0.005,0.005,0.01]
 
-    min_pos=[-0.3,-0.3,-0.15] ## frontback_christ数据参数
-    max_pos=[0.3,0.3,0.15]
+    # min_pos=[-0.3,-0.3,-0.15] ## frontback_christ数据参数
+    # max_pos=[0.3,0.3,0.15]
+    # grid_size=[0.005,0.005,0.01]
+
+    min_pos=[-0.2,-0.3,-0.2] ## frontback_hydrant数据参数
+    max_pos=[0.2,0.3,0.2]
     grid_size=[0.005,0.005,0.01]
 
     # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
@@ -173,7 +177,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_christ.mat", type=str,
+        "--data_path", default="data/frontback_hydrant.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
