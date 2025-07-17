@@ -104,8 +104,7 @@ def run_training(args):
     train_itr = iter(train_loader)
     
     ### 开始训练
-    opt_param=OptimizationParams()
-    gaussians.training_setup(opt_param)
+    gaussians.training_setup()
 
     loss_list=[]
 

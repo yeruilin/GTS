@@ -71,8 +71,7 @@ def run_training(args):
     
     ### 开始训练
     # 阶段一：清掉无用位置的点
-    opt_param=OptimizationParams()
-    gaussians.training_setup(opt_param)
+    gaussians.training_setup()
 
     loss_list=[]
 
