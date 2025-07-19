@@ -1,11 +1,11 @@
 [project]
-name = "GTS"
+name = "3dgs-nlos"
 version = "1.0.0"
 description = "Gaussian Transient Splatting for NLOS Imaging"
-requires-python = ">=3.11,<3.13"  # Python 3.13 not yet supported for some deps
+requires-python = ">=3.12,<3.13"  # Python 3.13 not yet supported for some deps
 dependencies = [
-    "torch",
-    "pytorch3d",
+    "torch==2.6.0",
+    # "pytorch3d==0.7.8+pt2.6.0cu124",
     "imageio",
     "matplotlib",
     "numpy",
@@ -19,10 +19,21 @@ dependencies = [
     "iopath"
 ]
 
+[tool.setuptools.packages.find]
+include = ["src"]
+
 [tool.uv]
 package = true
-cache-dir = "/data/hw5/.uv_cache"
+cache-dir = "/data/.uv_cache/"
 
+# 默认源
 [[tool.uv.index]]
+name="aliyun"
 url = "https://mirrors.aliyun.com/pypi/simple" # "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
+
+# pytorch3d用手动方式安装，因为uv无法解析pytorch3d==0.7.8+pt2.6.0cu124的文件
+# uv pip install --extra-index-url https://miropsota.github.io/torch_packages_builder pytorch3d==0.7.8+pt2.6.0cu124
+# [[tool.uv.index]]
+# name = "custom-torch"
+# url = "https://miropsota.github.io/torch_packages_builder"
