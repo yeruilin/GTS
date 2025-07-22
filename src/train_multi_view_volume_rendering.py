@@ -33,20 +33,22 @@ def run_training(args):
     train_fast=False
     ratio=[0.85,0.85,0.85]
 
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    max_pos=[0.3,0.3,0.3]
-    grid_size=[0.003,0.003,0.005]
-    view_num=1
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # view_num=1
 
     # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.3]
-    # grid_size=[0.0024,0.0024,0.005]
     # view_num=1
 
     # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
     # max_pos=[0.3,0.3,0.3]
-    # grid_size=[0.003,0.003,0.01]
     # view_num=1
+
+    min_pos=[-0.5,-0.5,-0.5] ## frontback_bunny_exp数据参数
+    max_pos=[0.5,0.5,0.5]
+    scale=0.002
+    view_num=1
 
     dataset= MultiViewDataset(args.data_path)
     bin_resolution=dataset.bin_resolution
@@ -57,7 +59,7 @@ def run_training(args):
     radius=np.array(max_pos)/2-np.array(min_pos)/2
     
     gaussians = Gaussians(
-        num_points=8000, init_type="random",
+        num_points=5000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale,view_num=view_num
     )
@@ -170,7 +172,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_hydrant.mat", type=str,
+        "--data_path", default="data/frontback_bunny_exp.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

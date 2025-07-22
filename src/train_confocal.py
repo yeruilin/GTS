@@ -35,9 +35,13 @@ def run_training(args):
     # object_center=(0.0821,0.2270,1.1992)
     # scale=0.008
     
-    radius=[0.5,0.5,0.4] ## bunny的参数
-    object_center=(0.0,0.0,0.8335)
-    scale=0.015
+    # radius=[0.5,0.5,0.4] ## bunny的参数
+    # object_center=(0.0,0.0,0.8335)
+    # scale=0.015
+
+    radius=[0.5,0.5,0.2] ## front_bunny的参数
+    object_center=(0.0,0.0,1.05)
+    num_points=3000
 
     # radius=[1.2,1.0,0.5] ## fk-bike数据参数
     # object_center=(0.0,0.2,1.35)
@@ -188,7 +192,7 @@ def get_args():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/bunny.mat", type=str, # "yrl_cow_data/cow.mat"
+        "--data_path", default="data/front_bunny.mat", type=str, # "yrl_cow_data/cow.mat"
         help="Path to the dataset."
     )
     parser.add_argument(

@@ -31,11 +31,15 @@ def train(rank, args):
     scale=0.002
     num_itrs=501
     train_fast=False
-
-    min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    max_pos=[0.3,0.3,0.3]
-    grid_size=[0.005,0.005,0.005]
     view_num=2
+
+    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.3,0.3,0.3]
+    # grid_size=[0.005,0.005,0.005]
+
+    min_pos=[-0.35,-0.35,-0.3] ## frontback_bunny_exp数据参数
+    max_pos=[0.35,0.35,0.3]
+    grid_size=[0.005,0.005,0.01]
 
     # min_pos=[-0.15,-0.3,-0.3] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.3]
@@ -162,7 +166,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_hydrant.mat", type=str,
+        "--data_path", default="data/frontback_bunny_exp.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(
