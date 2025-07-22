@@ -203,12 +203,17 @@ class Scene:
         
         return idxs[count:]
 
-    def compute_alphas(self, opacities, means_2D, cov_2D, img_size):
+    def compute_alphas(self, opacities, means_2D, cov_2D, img_size,b_idx=None):
+        # opacities: [N,1]
 
         W, H = img_size
 
         # point_2D contains all possible pixel locations in an image
-        xs, ys = torch.meshgrid(torch.arange(W), torch.arange(H), indexing="xy")
+        if b_idx==None:
+            xs, ys = torch.meshgrid(torch.arange(W), torch.arange(H), indexing="xy")
+        else:
+            xs, ys = torch.meshgrid(torch.arange(b_idx[0],b_idx[1],1), torch.arange(H), indexing="xy")
+
         points_2D = torch.stack((xs.flatten(), ys.flatten()), dim = 1)  # (H*W, 2)
         points_2D = points_2D.to(self.device)
 
@@ -223,7 +228,6 @@ class Scene:
         exp_power = torch.where(power > 0.0, 0.0, torch.exp(power))
 
         alphas = opacities*exp_power  # (N, H*W)
-        alphas = torch.reshape(alphas, (-1, H, W))  # (N, H, W)
 
         # Post processing for numerical stability
         alphas = torch.minimum(alphas, torch.full_like(alphas, 0.99))
@@ -248,10 +252,12 @@ class Scene:
                                         values for each of the N ordered Gaussians at every
                                         pixel location.
         """
-        _, H, W = alphas.shape
+        # _, H, W = alphas.shape
 
         if start_transmittance is None:
-            S = torch.ones((1, H, W), device=alphas.device, dtype=alphas.dtype)
+            new_shape=list(alphas.shape)
+            new_shape[0]=1
+            S = torch.ones(new_shape, device=alphas.device, dtype=alphas.dtype)
         else:
             S = start_transmittance
 
@@ -259,7 +265,7 @@ class Scene:
         one_minus_alphas = torch.concat((S, one_minus_alphas), dim=0)  # (N+1, H, W)
 
         transmittance = torch.cumprod(one_minus_alphas,dim=0)  
-        transmittance=transmittance[:-1,:,:] # (N, H, W)
+        transmittance=transmittance[:-1,...] # (N, H, W)
 
         # Post processing for numerical stability
         transmittance = torch.where(transmittance < 1e-4, 0.0, transmittance)  # (N, H, W)
@@ -305,6 +311,8 @@ class Scene:
                                         for mini-batch splatting in the next iteration.
         """
         N=means_3D.shape[0]
+        W,H=img_size
+
         if z_vals.shape[0]!=N:
             raise RuntimeError
         # Step 1: Compute 2D gaussian parameters
@@ -317,6 +325,7 @@ class Scene:
         # Step 2: Compute alpha maps for each gaussian
 
         alphas = self.compute_alphas(opacities,means_2D,cov_2D,img_size)  # (N, H, W)
+        alphas = torch.reshape(alphas, (-1, H, W))  # (N, H, W)
 
         # Step 3: Compute transmittance maps for each gaussian
 
@@ -436,7 +445,27 @@ class Scene:
 
         return image, depth, mask
     
-    def render_conf_hist(self,camera,bin_resolution,num_bins,t0=0,decay=4,gaussians_per_splat=-1,img_size=(64,64)):
+    def nlos_splat(self,means_3D,colours,opacities,scales,quats,camera,img_size,b_idx=None):
+        ## Volume rendering histogram
+        N=means_3D.shape[0]
+
+        # Step 1: Compute 2D gaussian parameters
+        means_2D = self.compute_means_2D(means_3D,camera)  # (N, 2)
+        cov_2D = self.compute_cov_2D(means_3D,quats,scales,camera,img_size)  # (N, 2, 2)
+
+        # Step 2: Compute alpha maps for each gaussian
+        alphas = self.compute_alphas(opacities,means_2D,cov_2D,img_size,b_idx)  # (N, laser_num)
+
+        # Step 3: Compute transmittance maps for each gaussian
+        transmittance = self.compute_transmittance(alphas)  # (N, laser_num)
+
+        # integrate on phi and theta
+        intensity=colours*alphas*transmittance  # (N,laser_num)
+        intensity=torch.sum(intensity,dim=1)
+
+        return intensity
+    
+    def render_conf_hist(self,camera,bin_resolution,num_bins,t0=0,decay=4,per_splat=-1,img_size=(64,64)):
         # Globally sort gaussians according to their depth value
         z_vals_origin = self.compute_depth_values(camera) # (N,)
         idxs = self.get_idxs_to_filter_and_sort(z_vals_origin)
@@ -446,26 +475,25 @@ class Scene:
         quats= torch.zeros([scales.shape[0],4],dtype=scales.dtype,device=scales.device)
         z_vals = z_vals_origin[idxs] # [N,1]
         means_3D = self.gaussians.means[idxs] # [N,3]
-
         colours = self.gaussians.get_colour[idxs] # [N,1]
 
-        ## Volume rendering histogram
         N=means_3D.shape[0]
-        if z_vals.shape[0]!=N:
-            raise RuntimeError
-        # Step 1: Compute 2D gaussian parameters
-        means_2D = self.compute_means_2D(means_3D,camera)  # (N, 2)
-        cov_2D = self.compute_cov_2D(means_3D,quats,scales,camera,img_size)  # (N, 2, 2)
 
-        # Step 2: Compute alpha maps for each gaussian
-        alphas = self.compute_alphas(opacities,means_2D,cov_2D,img_size)  # (N, H, W)
+        # In this case we can directly splat all gaussians onto the image
+        if per_splat == -1:
+            intensity=self.nlos_splat(means_3D,colours,opacities,scales,quats,camera,img_size)
+        else:
+            W, H = img_size
+            D = means_3D.device
+            intensity = torch.zeros((N,), dtype=torch.float32).to(D)
 
-        # Step 3: Compute transmittance maps for each gaussian
-        transmittance = self.compute_transmittance(alphas)  # (N, H, W)
+            num_mini_batches = math.ceil(W/ per_splat)
 
-        # integrate on phi and theta
-        intensity=colours[:,:,None]*alphas*transmittance  # (N,H, W)
-        intensity = torch.sum(intensity.view(N, -1), dim=1)  # (N,)
+            # 每次计算一部分片元的颜色，最后叠加起来得到总的结果
+            for i in range(num_mini_batches):
+                b_idx=[i*per_splat,(i+1)*per_splat]
+                intensity_=self.nlos_splat(means_3D,colours,opacities,scales,quats,camera,img_size,b_idx)
+                intensity =intensity+ intensity_
 
         # ## NLOS rendering
         # hist_inten=intensity/(z_vals**decay) # 形状是[select_num]
