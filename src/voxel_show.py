@@ -33,8 +33,8 @@ def create_renders(args):
 
     # load voxel
     mat_path=args.data_path # bunny_result
-    thresh=0.55
-    
+    thresh=0.15
+
     mat_data = scipy.io.loadmat(mat_path)
     rho = mat_data['rho']
     rho=rho/np.max(rho)
@@ -47,8 +47,11 @@ def create_renders(args):
     # min_pos=[-0.3,-0.3,-0.15] ## frontback_christ数据参数
     # max_pos=[0.3,0.3,0.15]
 
-    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    # max_pos=[0.3,0.3,0.3]
+    # min_pos=[-0.35,-0.35,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.35,0.35,0.3]
+
+    min_pos=[-0.32,-0.3,-0.3] ## frontback_david数据参数
+    max_pos=[0.32,0.3,0.3]
 
     # min_pos=[-0.2,-0.3,-0.2] ## frontback_hydrant数据参数
     # max_pos=[0.2,0.3,0.2]
@@ -56,8 +59,8 @@ def create_renders(args):
     # min_pos=[-0.35,-0.35,-0.3] ## frontback_bunny_exp数据参数
     # max_pos=[0.35,0.35,0.3]
 
-    min_pos=[-0.3,-0.5,-0.3] ## frontback_lion_exp数据参数
-    max_pos=[0.5,0.5,0.3]
+    # min_pos=[-0.3,-0.5,-0.3] ## frontback_lion_exp数据参数
+    # max_pos=[0.5,0.5,0.3]
 
     # min_pos=[-0.5,-0.5,-0.2] ## front_lion的参数
     # max_pos=[0.5,0.5,0.2]
@@ -70,9 +73,9 @@ def create_renders(args):
 
     if "scale" in mat_data.keys():
         # scale=np.log(mat_data['scale'])
-        scale=np.log(np.ones(rho.shape,dtype=np.float32)*steps[0]/2)
+        scale=np.log(np.ones(rho.shape,dtype=np.float32)*steps[0])
     else:
-        scale=np.log(np.ones(rho.shape,dtype=np.float32)*steps[0]/2)
+        scale=np.log(np.ones(rho.shape,dtype=np.float32)*steps[0])
     
     # 获取大于阈值的坐标和值
     x_idx, y_idx, z_idx = np.where(rho > thresh)

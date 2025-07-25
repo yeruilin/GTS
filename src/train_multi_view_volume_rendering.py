@@ -59,7 +59,7 @@ def run_training(args):
     radius=np.array(max_pos)/2-np.array(min_pos)/2
     
     gaussians = Gaussians(
-        num_points=500, init_type="random",
+        num_points=5000, init_type="random",
         device=args.device, isotropic=True,
         colour_dim=1,extent=radius,center=object_center,scale=scale,view_num=view_num
     )
@@ -114,7 +114,6 @@ def run_training(args):
         
         loss=loss/sample_num
         loss.backward()
-        loss_list.append(loss.item())
 
         with torch.no_grad():
             gaussians.optimizer.step()

@@ -31,13 +31,17 @@ def train(rank, args):
     confocal=True
     decay=4
     scale=0.002
-    num_itrs=501
+    num_itrs=1001
     train_fast=False
     view_num=1
 
-    # min_pos=[-0.3,-0.3,-0.3] ## frontback_bunny数据参数
-    # max_pos=[0.3,0.3,0.3]
+    # min_pos=[-0.35,-0.35,-0.3] ## frontback_bunny数据参数
+    # max_pos=[0.35,0.35,0.3]
     # grid_size=[0.005,0.005,0.01]
+
+    min_pos=[-0.32,-0.3,-0.3] ## frontback_david数据参数
+    max_pos=[0.32,0.3,0.3]
+    grid_size=[0.005,0.005,0.01]
 
     # min_pos=[-0.15,-0.3,-0.18] ## frontback_lion数据参数
     # max_pos=[0.15,0.3,0.18]
@@ -55,10 +59,10 @@ def train(rank, args):
     # max_pos=[0.35,0.35,0.3]
     # grid_size=[0.005,0.005,0.01]
 
-    min_pos=[-0.3,-0.5,-0.3] ## frontback_lion_exp数据参数
-    max_pos=[0.5,0.5,0.3]
-    grid_size=[0.01,0.01,0.01]
-    num_itrs=1001
+    # min_pos=[-0.2,-0.45,-0.3] ## frontback_lion_exp数据参数
+    # max_pos=[0.5,0.25,0.3]
+    # grid_size=[0.005,0.005,0.01]
+    # num_itrs=501
 
     # min_pos=[-0.3,-0.3,-0.3] ## frontback_cylinder数据参数
     # max_pos=[0.3,0.3,0.3]
@@ -186,7 +190,7 @@ def train(rank, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data_path", default="data/frontback_lion_exp.mat", type=str,
+        "--data_path", default="data/frontback_david2256.mat", type=str,
         help="Path to the dataset."
     )
     parser.add_argument(

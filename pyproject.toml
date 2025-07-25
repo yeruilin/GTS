@@ -2,7 +2,7 @@
 name = "3dgs-nlos"
 version = "1.0.0"
 description = "Gaussian Transient Splatting for NLOS Imaging"
-requires-python = ">=3.12,<3.13"  # Python 3.13 not yet supported for some deps
+requires-python = "==3.10.*"  # Python 3.13 not yet supported for some deps
 dependencies = [
     "torch==2.6.0",
     # "pytorch3d==0.7.8+pt2.6.0cu124",

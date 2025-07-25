@@ -313,7 +313,7 @@ class MultiViewDataset(Dataset):
             # 对应扫描面
             self.view_id=data_dict["view_id"] # [N,1], int
 
-            # self.data=self.data[:128*128*2,151:350]
+            self.data=self.data[:,151:350]
             # self.grid=self.grid[:128*128*2,:]
             # self.view_id=self.view_id[:128*128*2,:]
 
@@ -324,7 +324,7 @@ class MultiViewDataset(Dataset):
             else:
                 self.t0=0.0
 
-            # self.t0=151*self.bin_resolution
+            self.t0=151*self.bin_resolution
             self.M=self.data.shape[-1]
 
         except  Exception as e:
