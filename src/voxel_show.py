@@ -8,10 +8,10 @@ import numpy as np
 
 from PIL import Image
 from tqdm import tqdm
-from scene import Scene
+from scene2 import Scene
 from gaussian import Gaussians
 from data_utils import colour_depth_q1_render,save_ply
-from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform
+from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform,FoVPerspectiveCameras
 
 from scipy.ndimage import uniform_filter,convolve,gaussian_filter
 
@@ -127,7 +127,7 @@ def create_renders(args):
 
         with torch.no_grad():
             # Rendering scene using gaussian splatting
-            img, depth, mask= scene.render(camera,args.gaussians_per_splat,img_size,bg_colour,no_grad=True)
+            img, depth, mask= scene.render(camera,args.gaussians_per_splat,img_size)
 
         img=(img-torch.min(img))/(torch.max(img)-torch.min(img))
         img[(mask<0.5).expand(-1, -1, 3)]=1.0
@@ -206,7 +206,7 @@ def get_args():
             "memory consumption."
         )
     )
-    parser.add_argument("--device", default="cuda:1", type=str)
+    parser.add_argument("--device", default="cuda:0", type=str)
     args = parser.parse_args()
     return args
 
