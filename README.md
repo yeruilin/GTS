@@ -54,7 +54,7 @@ Run `python train_confocal.py`. It generally converges around 5 minutes. (10GB G
 
 Run `python render_ply.py --data_path temp/result.ply` to visualize the results.
 
-<img src="image/README/1774506025645.png" width="60%"/>
+<img src="image/README/1774506025645.png" width="100%"/>
 
 #### Train Multi-View for 3D Panorama
 
@@ -62,13 +62,13 @@ Run `python train_multi_view.py`. It generally converges in 10-20 minutes. (24GB
 
 Run `python render_ply.py --data_path temp/result.ply` to visualize the results.
 
-<img src="image/README/1774506752897.png" width="60%"/>
+<img src="image/README/1774506752897.png" width="100%"/>
 
 #### 3D Panoramic NLOS Imaging Principles
 
 Gaussian Transient Splatting leverages volume rendering to mix spatial frequencies, thereby allowing full structural information to pass through the finite aperture. This yields a much broader recoverable spectral bandwidth compared to LCT and Phasor Field, ensuring the complete recovery of 3D shapes such as the horizontal tabletop.
 
-<img src="image/README/1774507138180.png" width="60%"/>
+<img src="image/README/1774507138180.png" width="100%"/>
 
 ---
 
