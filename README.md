@@ -64,9 +64,9 @@ Run `python render_ply.py --data_path temp/result.ply` to visualize the results.
 
 <img src="image/README/1774506752897.png" width="100%"/>
 
-#### 3D Panoramic NLOS Imaging Principles
+#### Overcoming the Finite Aperture Constraints
 
-Gaussian Transient Splatting leverages volume rendering to mix spatial frequencies, thereby allowing full structural information to pass through the finite aperture. This yields a much broader recoverable spectral bandwidth compared to LCT and Phasor Field, ensuring the complete recovery of 3D shapes such as the horizontal tabletop.
+Gaussian Transient Splatting leverages volume rendering to mix spatial frequencies, thereby allowing full structural information to pass through the finite aperture. This yields a much broader recoverable spectral bandwidth compared to LCT and Phasor Field, ensuring the complete recovery of 3D shapes such as the horizontal tabletop. **This is the key principles behind 3D Panoramic NLOS imaging and the most significant advantages of Gaussian Transient Splatting.**
 
 <img src="image/README/1774507138180.png" width="100%"/>
 
