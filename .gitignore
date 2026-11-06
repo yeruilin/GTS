@@ -1,5 +1,4 @@
 output
-data
 *_data
 __pycache__
 temp*
@@ -8,7 +7,6 @@ test*
 
 *.bin
 models/
-data/
 
 nav
 tags
